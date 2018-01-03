@@ -127,6 +127,19 @@ addWithSquare x y =
     addWithOperation (fun z -> z * z) x y
 ```
 
+## Tuples
+
+TBD:
+```
+let (t: int * float * string) = (5, 2.0, "hello")
+```
+
+or 
+
+```
+let (t: int, float, string) = (5, 2.0, "hello")
+```
+
 ## Algebraic Data Types
 
 the support for ADT allow the user to manipulate/represent data in typed manner, where the type models real world data in a very clear and concise manner.
@@ -142,9 +155,6 @@ union Boolean =
     | False
 
 union DivisionResult = Result (result:int) (rest:int)
-
-
-let (t: int * float *s tring) = (5, 2.0, "hello")  <-
 
 //concrete record type
 record Being =
