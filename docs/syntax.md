@@ -100,7 +100,7 @@ addWithOperation fn x y =
 ```
 type test() =
     let five = 5
-    val another = 6
+    var another = 6
 
     //instance function
     add: int -> int -> int
