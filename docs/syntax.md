@@ -231,7 +231,7 @@ Session types + linear types + typestate definitions, or how to provide **first-
 ### Active matches
 F# has a notion of [Active patterns](https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/active-patterns) 
 
-What we can define is an active match which is essentially a function that taked the target type followed by any other parameters which will result in a boolean result.
+We can define what is called an active match which is a function that expects the target type followed by any other parameters which will result in a boolean result.
 
 ```fsharp
 record Soldier =
