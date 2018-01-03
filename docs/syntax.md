@@ -206,6 +206,24 @@ let mappedRecord =
     |> List.map (fun x -> x)
 ```
 
+### Partial application of unions
+Partial application can also be applied to union types:
+
+```
+type Visibility =
+    | All 
+    | Active 
+    | Completed int int
+
+//partial application
+let foo = Completed 20
+val: int -> Visibility
+
+//fully applied Visibility
+let foo2 = Completed 20 20
+val: Visibility
+```
+
 ## Extended Data Types
 
 ### Array type
@@ -224,6 +242,16 @@ type ArrayOfInts = Array int    <- type aliasing
 
 As we can see Array is dependent of the type 'a which can be anything.
 In fact, we just took the occasion to show the usage of **generics** as being equivalent to defining *single case union* with a generic parameter of that union case (which constructor would internally be a function at the type level, allowing partial application over union cases).
+
+### Construction
+
+Extended data types can be defined in any of the following ways:
+
+```
+let list1 = [1,2,3,4]
+let list2 = 1 :: [2,3,4]
+let list3 = 1 :: 2 :: 3 :: 4 :: []
+```
 
 ### Contracts (***to be defined later : based on traits and protocols***)
 
