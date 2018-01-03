@@ -1,12 +1,12 @@
 # Syntax Examples
 
-This document provide a list of code snippets in a structured manner in order to define/provide some basic overview of what we are aiming to create as a front-end syntax. It will also display a set of features that the language will have built-in that will solve specific issues related to low-level programming requirements.
+This document provide a list of code snippets in a structured manner in order to provide a basic overview of the language. It will also display a set of features that the language will have built-in that will solve specific issues related to low-level programming requirements.
 
 ## Values and Variables
 
 The language will provide basic features found in any general-purpose languages. Basic value types will built-in to represent simple to express data.
 
-### Mutable and Immutable valuess
+### Mutable and Immutable values
 
 There is support for both immutable and mutable values.
 
@@ -27,13 +27,15 @@ e <- 7
 
 ### Number
 
-Support for number values should be defined:
+Support for primitive number are defines as follows:
 
 - byte, int8
 - uint16, int16
 - uint32, int32
 - uint64, int64
-- float, fixed-point, double
+- float, double, fixed-point
+
+_Note byte is unsigned_
 
 ```Fsharp
 let (a:byte) = 17ub
@@ -47,7 +49,7 @@ let (x:float) = 7.2             <- support for shadowing
 let (fp:fixed[4,12]) = 0xA.E15  <- support for some refinement types
 
 
-// Doesn't compile because we have defined a F4B8 and not a F8B8
+// Doesn't compile because we have defined a fixed[4,12] and not a fixed[8,8]
 let (fpFailed:fixed[8,8]) = 0xA.E1
 ```
 
@@ -55,7 +57,7 @@ let (fpFailed:fixed[8,8]) = 0xA.E1
 
 Support for string values.
 
-- string, string< P >
+- string
 - char
 
 ```Fsharp
@@ -67,11 +69,9 @@ s1' = s1            <- internally a string is a char[]
 // val it: true
 ```
 
-string < P > is a kind of string that is defined via a predicate `P` : `string -> bool`, over the string. This is part of the refinement type system, that will be developped by adding a mechanism of constraints over values.
-
 ## Functions
 
-Functions are basic elements of the language that contains a behaviour to apply over a set of input data. They take elements from an input set and return an element of an ouput set. We consider them as first-class citizen of the language, and thus are as easily manipulable as simple values. They are the basic element of composition, and by composing them we build up more complex behaviour.
+Functions are basic elements of the language that contains a behavior to apply over a set of input data. They take elements from an input set and return an element of an output set. We consider them as first-class citizen of the language, and thus are as easily manipulable as simple values. They are the basic element of composition, and by composing them we build up more complex behavior.
 
 ### Function definition
 
@@ -95,6 +95,24 @@ addWithOperation fn x y =
     (fn x) + (fn y)
 ```
 
+### Nominal types
+
+```
+type test() =
+    let five = 5
+    val another = 6
+
+    //instance function
+    add: int -> int -> int
+    add x y =
+        x + y
+
+    //static function
+    add: int -> int -> int
+    static add x y =
+        x + y
+```
+
 ### Anonymous functions
 
 It is often the case that users want to pass functions as parameters to other functions but on the fly such that the function is never really defined. We called these kind of functions **anonymous** functions.
@@ -111,7 +129,7 @@ addWithSquare x y =
 
 ## Algebraic Data Types
 
-the support for ADT allow the user to manipulate/represent data in typed manner, where the type modelize real world data in a very clear and concise manner.
+the support for ADT allow the user to manipulate/represent data in typed manner, where the type models real world data in a very clear and concise manner.
 
 To represent any data, a logic-like semantic is needed with the 2 basic constructs which are :
 
@@ -126,35 +144,57 @@ union Boolean =
 union DivisionResult = Result (result:int) (rest:int)
 
 
-let (t:int*float*string) = (5,2.0,"hello")  <-
+let (t: int * float *s tring) = (5, 2.0, "hello")  <-
 
+//concrete record type
 record Being =
-    {   Age  : int  }
+    { Age: int }
 
-isOlderThan : int -> Being -> bool
+//creates an anonymous record type with the fields x, y, z
+let point = 
+   { x = 3, y = 4, z = 5 }
+
+//field access
+let xCoord = point.x
+
+isOlderThan: int -> Being -> bool
 isOlderThan n being =
     being.Age > n
 
 record Person =
-    {   Being with
-        Name : string
+    { Being with
+      Name : string
     }
 
 let person =
-    {   Age     = 5
-        Name    = "A Name"  }
+    { Age  = 5
+      Name = "A Name"  }
 
 let result = isOlderThan 10 person
 //val result : false
-
-// Being is a record and same goes with Person, however the Person record
-// is composed from the Being record. Therefore, it can apply any
-// function defined for Being and also functions specific to Person
 ```
 
-2 new keywords are defined : *union* and *record* to be explicit on the type of ADT we are using
+Being is a record and same goes with Person, however the Person record is composed from the Being record. Therefore, it can apply any function defined for Being and also functions specific to Person.  
+
+Two new keywords are defined : *`union`* and *`record`* to be explicit on the type of ADT we are using
 
 *Records have structural inheritance*, therefore functions can be used for other records than the one specified in the function signature, if that record is built as the composition of that record and other fields.
+
+Records also expose property functions so that a simple property extraction does not need an anonymous function defining:
+
+```
+let mappedRecord =
+    [point,{x=0, y=0}]
+    |> List.map .x
+```
+
+Rather than the verbose anonymous function syntax to extract a value:  
+
+```
+let mappedRecord =
+    [point,{x=0, y=0}]
+    |> List.map (fun x -> x)
+```
 
 ## Extended Data Types
 
@@ -185,6 +225,33 @@ Session types + linear types + typestate definitions, or how to provide **first-
 
 ### Pattern Matching
 
+#### Type matches
+#### union matches
+
+### Active matches
+F# has a notion of [Active patterns](https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/active-patterns) 
+
+What we can define is an active match which is essentially a function that taked the target type followed by any other parameters which will result in a boolean result.
+
+```fsharp
+record Soldier =
+    { hp: int
+      agility: int
+      strength: int }
+
+    hp: Soldier -> int -> bool
+    hp value pattern =
+        pattern = value.hp
+
+let soldier = Soldier(hp: 99, x: 10, y: 10)
+
+match soldier with
+    .hp 0: -> print "dead soldier"
+    _: -> print "alive soldier"
+
+val : "alive soldier"
+```
+
 ### If Then Else
 
 ### loops
@@ -197,9 +264,19 @@ Session types + linear types + typestate definitions, or how to provide **first-
 
 ## Modules and Namespaces
 
-## Active patterns
+
 
 ## Notation extension
+
+See: http://docs.idris-lang.org/en/latest/tutorial/syntax.html
+
+## Constraints
+
+Constraints can be applied to all primitives, lets take string as an example:
+
+string< P >
+
+`string < P >` is a kind of string that is defined via a predicate `P` : `string -> bool`, over the string. This is part of the refinement type system, that will be developed by adding a mechanism of constraints over values.
 
 ## reference counting/tracking, allocation, deallocation
 
