@@ -97,7 +97,7 @@ addWithOperation fn x y =
 
 ### Nominal types
 
-```
+```FSharp
 type test() =
     let five = 5
     var another = 6
@@ -130,13 +130,14 @@ addWithSquare x y =
 ## Tuples
 
 TBD:
-```
+
+```FSharp
 let (t: int * float * string) = (5, 2.0, "hello")
 ```
 
-or 
+or
 
-```
+```FSharp
 let (t: int, float, string) = (5, 2.0, "hello")
 ```
 
@@ -150,18 +151,18 @@ To represent any data, a logic-like semantic is needed with the 2 basic construc
 - a *Sum*     -> **Unions**
 
 ```FSharp
-union Boolean =
+type Boolean =
     | True
     | False
 
-union DivisionResult = Result (result:int) (rest:int)
+type DivisionResult = Result (result:int) (rest:int)
 
 //concrete record type
-record Being =
+type Being =
     { Age: int }
 
 //creates an anonymous record type with the fields x, y, z
-let point = 
+let point =
    { x = 3, y = 4, z = 5 }
 
 //field access
@@ -171,7 +172,7 @@ isOlderThan: int -> Being -> bool
 isOlderThan n being =
     being.Age > n
 
-record Person =
+type Person =
     { Being with
       Name : string
     }
@@ -184,7 +185,7 @@ let result = isOlderThan 10 person
 //val result : false
 ```
 
-Being is a record and same goes with Person, however the Person record is composed from the Being record. Therefore, it can apply any function defined for Being and also functions specific to Person.  
+Being is a record and same goes with Person, however the Person record is composed from the Being record. Therefore, it can apply any function defined for Being and also functions specific to Person.
 
 Two new keywords are defined : *`union`* and *`record`* to be explicit on the type of ADT we are using
 
@@ -192,27 +193,28 @@ Two new keywords are defined : *`union`* and *`record`* to be explicit on the ty
 
 Records also expose property functions so that a simple property extraction does not need an anonymous function defining:
 
-```
+```FSharp
 let mappedRecord =
     [point,{x=0, y=0}]
     |> List.map .x
 ```
 
-Rather than the verbose anonymous function syntax to extract a value:  
+Rather than the verbose anonymous function syntax to extract a value:
 
-```
+```FSharp
 let mappedRecord =
     [point,{x=0, y=0}]
-    |> List.map (fun x -> x)
+    |> List.map (fun recordElement -> recordElement.x)
 ```
 
 ### Partial application of unions
+
 Partial application can also be applied to union types:
 
-```
+```FSharp
 type Visibility =
-    | All 
-    | Active 
+    | All
+    | Active
     | Completed int int
 
 //partial application
@@ -226,6 +228,15 @@ val: Visibility
 
 ## Extended Data Types
 
+**TODO** : This part might need some update in the future. We should add :
+
+- list  -> `[]`
+- array -> `[| |]`
+- seq
+- set
+- map
+- dictionary
+
 ### Array type
 
 An array type is a type that describes a collection of elements of the same types. These elements are accessible via indexes (identifying keys) that allow to manipulate those stored values.
@@ -233,7 +244,7 @@ The array type is dependent of the type of the elements inside it. If we were to
 
 ```FSharp
 // the type of Array could be theoretically defined as an inductive list  // via the use of unions :
-union Array a =
+type Array a =
     | Empty
     | Cons a (Array a)
 
@@ -247,7 +258,7 @@ In fact, we just took the occasion to show the usage of **generics** as being eq
 
 Extended data types can be defined in any of the following ways:
 
-```
+```FSharp
 let list1 = [1,2,3,4]
 let list2 = 1 :: [2,3,4]
 let list3 = 1 :: 2 :: 3 :: 4 :: []
@@ -264,15 +275,17 @@ Session types + linear types + typestate definitions, or how to provide **first-
 ### Pattern Matching
 
 #### Type matches
+
 #### union matches
 
-### Active matches
-F# has a notion of [Active patterns](https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/active-patterns) 
+#### Active matches
+
+F# has a notion of [Active patterns](https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/active-patterns)
 
 We can define what is called an active match which is a function that expects the target type followed by any other parameters which will result in a boolean result.
 
 ```fsharp
-record Soldier =
+type Soldier =
     { hp: int
       agility: int
       strength: int }
@@ -302,8 +315,6 @@ val : "alive soldier"
 
 ## Modules and Namespaces
 
-
-
 ## Notation extension
 
 See: http://docs.idris-lang.org/en/latest/tutorial/syntax.html
@@ -321,3 +332,17 @@ string< P >
 ## Overall syntax historic
 
 explain that it is an ML based syntax, light with no curly braces and all that stuff. Maybe to put at the beginning ?
+
+## TODO
+
+What to do in this document.
+
+- Extract the part that explain features, to be detailed in an other document
+- Detail **row-poly** = **structural inheritance**
+- Detail **Contracts**
+- Detail **structural equality** + referential equality + shared operations within types
+- Detail **Quotations**
+- Detail **session types** + **linear types** + **typestate oriented programing**
+- Detail the mechanism of predicate evaluated at compile-time to constraint types.
+- Should we keep Nominal types? or remove them in favour of traits or row-pm ?
+- Might be other questions to solve here.
