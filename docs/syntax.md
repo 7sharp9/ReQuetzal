@@ -95,24 +95,6 @@ addWithOperation fn x y =
     (fn x) + (fn y)
 ```
 
-### Nominal types
-
-```FSharp
-type test() =
-    let five = 5
-    var another = 6
-
-    //instance function
-    add: int -> int -> int
-    add x y =
-        x + y
-
-    //static function
-    add: int -> int -> int
-    static add x y =
-        x + y
-```
-
 ### Anonymous functions
 
 It is often the case that users want to pass functions as parameters to other functions but on the fly such that the function is never really defined. We called these kind of functions **anonymous** functions.
@@ -344,5 +326,4 @@ What to do in this document.
 - Detail **Quotations**
 - Detail **session types** + **linear types** + **typestate oriented programing**
 - Detail the mechanism of predicate evaluated at compile-time to constraint types.
-- Should we keep Nominal types? or remove them in favour of traits or row-pm ?
 - Might be other questions to solve here.
