@@ -52,6 +52,12 @@ a <- b + c
 
 ## Functions
 ### 2.1 simple named function
+elm
+```
+id: 'a -> 'a
+id a = a
+```
+
 ```elm
 add: int -> int -> int
 add a b =
