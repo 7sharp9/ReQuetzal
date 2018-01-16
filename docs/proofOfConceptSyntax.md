@@ -52,8 +52,7 @@ a <- b + c
 
 ## Functions
 ### 2.1 simple named function
-elm
-```
+```elm
 id: 'a -> 'a
 id a = a
 ```
@@ -75,6 +74,7 @@ addTwo =
 
 ## 3: Records
 ### 3.1 simple record definition and instantiation
+
 ```fsharp
 type Point = {x: int, y: int}
 let myPoint = { x = 42, y = 172 }
