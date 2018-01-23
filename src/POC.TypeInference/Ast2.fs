@@ -226,20 +226,31 @@ let rec matchFunTy numParams ty =
 
 let rec infer env level exp =
     match exp with
+    // x : σ ∈ Γ
+    // --−−−−−−−
+    // Γ ⊢ x : σ
     | Var name ->
             try instantiate level (Env.lookup env name)
             with _ex -> failwithf "variable %s not found" name
-        
+    ///  Γ , x : τ ⊢ e : τ′
+    /// −−−−−−−−−−−−−−------
+    /// Γ ⊢ λ x . e : τ → τ′
     | Fun(paramList, bodyExpr) ->
             let paramTyList = paramList |> List.map (fun _ -> newVar level) 
             let fnEnv =
                 List.fold2 (fun env paramName paramTy -> Env.extend env paramName paramTy) env paramList paramTyList
             let returnTy = infer fnEnv level bodyExpr
             TArrow(paramTyList, returnTy)
+    // Γ ⊢ e0 : τ → τ′   Γ ⊢ e1 : τ
+    // −--------−−−−−−−−−−−−−−−−−−−−
+    //         Γ ⊢ e0(e1) : τ′
     | Let(varName, valueExpr, bodyExpr) ->
             let varTy = infer env (level + 1) valueExpr
             let generalizedTy = generalize level varTy
             infer (Env.extend env varName generalizedTy) level bodyExpr
+    // Γ ⊢ e0 : τ → τ′   Γ ⊢ e1 : τ
+    // −--------−−−−−−−−−−−−−−−−−−−−
+    //        Γ ⊢ e0(e1) : τ′
     | Call(fnExpr, argList) ->
             let paramTyList, returnTy =
                 matchFunTy (List.length argList) (infer env level fnExpr)
