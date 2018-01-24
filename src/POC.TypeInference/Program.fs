@@ -1,10 +1,5 @@
 ﻿open System
 
-
-let compose = fun f -> fun g -> fun x -> g(f(x))
-let first = fst
-let c2 = (>>)
-
 [<EntryPoint>]
 let main argv =
     List.iter (Ast.tryExp Ast.myEnv) Ast.examples
