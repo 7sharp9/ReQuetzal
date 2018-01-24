@@ -263,7 +263,7 @@ let rec infer env level exp =
 let example1 =
     Fun([("a")], Var(("a") ))
 
-///(>>)
+///compose or (>>)
 let example2 =
     Let("compose",
         Fun(["f"], 
