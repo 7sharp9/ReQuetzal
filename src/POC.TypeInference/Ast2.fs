@@ -6,7 +6,7 @@
 //a technique first described by Didier Rémy [1]. A very eloquent description of the ranked type variables 
 //algorithm and associated optimizations was written by Oleg Kiselyov, see http://okmij.org/ftp/ML/generalization.html
 
-module Ast2
+module rec Ast2
 open System
 open Persistent
 type name = string
@@ -39,72 +39,74 @@ and tvar =
     | Link of ty
     | Generic of id
 
-let stringOfExpr expr : string =
-    let rec stringOfExprRec isSimple exp =
-        match exp with
-        | Var name -> name
-        | Call(fnExpr, argList) ->
-            stringOfExprRec true fnExpr + "(" + String.concat ", " (List.map (stringOfExprRec false) argList) + ")"
-        | Fun(paramList, bodyExpr) ->
-                let funStr =
-                    sprintf "fun %s -> %s" (String.concat " " paramList)  (stringOfExprRec false bodyExpr)
-                if isSimple then sprintf "(%s)" funStr else funStr
-        | Let(varName, valueExpr, bodyExpr) ->
-                let letStr =
-                    sprintf "let %s = %s in %s" varName  (stringOfExprRec false valueExpr) (stringOfExprRec false bodyExpr)
-                if isSimple then sprintf "(%s)" letStr else letStr
-    stringOfExprRec false expr
+module exp =
+    let toString expr : string =
+        let rec stringOfExprRec isSimple exp =
+            match exp with
+            | Var name -> name
+            | Call(fnExpr, argList) ->
+                stringOfExprRec true fnExpr + "(" + String.concat ", " (List.map (stringOfExprRec false) argList) + ")"
+            | Fun(paramList, bodyExpr) ->
+                    let funStr =
+                        sprintf "fun %s -> %s" (String.concat " " paramList)  (stringOfExprRec false bodyExpr)
+                    if isSimple then sprintf "(%s)" funStr else funStr
+            | Let(varName, valueExpr, bodyExpr) ->
+                    let letStr =
+                        sprintf "let %s = %s in %s" varName  (stringOfExprRec false valueExpr) (stringOfExprRec false bodyExpr)
+                    if isSimple then sprintf "(%s)" letStr else letStr
+        stringOfExprRec false expr
 
-let stringOfTy ty : string =
-    let mutable idNameMap = PersistentHashMap.empty
-    let count = ref 0
-    let nextName () =
-        let i = !count
-        incr count
-        let name =
-            match i with
-            | i when i >= 26 -> string(char (97 + i % 26)) + string (i / 26)
-            | _ -> string(char (97 + i % 26))
-        name
-    let rec f isSimple = function
-        | TConst name -> name
-        | TApp(ty, tyArgList) ->
-                f true ty + "[" + String.concat ", " (tyArgList |> List.map (f false) ) + "]"
-        | TArrow(paramTyList, returnTy) ->
-                let arrowTyStr =
-                    match paramTyList with
-                    | [singleTy] ->
-                            let paramTyStr = f true singleTy
-                            let returnTyStr = f false returnTy
-                            sprintf "%s -> %s" paramTyStr returnTyStr
-                    | _ ->
-                            let paramTyListStr = String.concat ", " (paramTyList |> List.map (f false) )
-                            let returnTyStr = f false returnTy
-                            sprintf "(%s) -> %s" paramTyListStr returnTyStr
-                
-                if isSimple then sprintf "(%s)" arrowTyStr else arrowTyStr
-        | TVar {contents = Generic id} -> 
+module ty =
+    let toString ty : string =
+        let mutable idNameMap = PersistentHashMap.empty
+        let count = ref 0
+        let nextName () =
+            let i = !count
+            incr count
+            let name =
+                match i with
+                | i when i >= 26 -> string(char (97 + i % 26)) + string (i / 26)
+                | _ -> string(char (97 + i % 26))
+            name
+        let rec f isSimple = function
+            | TConst name -> name
+            | TApp(ty, tyArgList) ->
+                    f true ty + "[" + String.concat ", " (tyArgList |> List.map (f false) ) + "]"
+            | TArrow(paramTyList, returnTy) ->
+                    let arrowTyStr =
+                        match paramTyList with
+                        | [singleTy] ->
+                                let paramTyStr = f true singleTy
+                                let returnTyStr = f false returnTy
+                                sprintf "%s -> %s" paramTyStr returnTyStr
+                        | _ ->
+                                let paramTyListStr = String.concat ", " (paramTyList |> List.map (f false) )
+                                let returnTyStr = f false returnTy
+                                sprintf "(%s) -> %s" paramTyListStr returnTyStr
                     
-                        match idNameMap |> PersistentHashMap.tryFind id with
-                        | Some ty -> ty
-                        | None ->
-                            let name = nextName()
-                            idNameMap <- idNameMap |> PersistentHashMap.set id name 
-                            name
-                
-        | TVar {contents = Unbound(id, _)} -> "_" + string id
-        | TVar {contents = Link ty} -> f isSimple ty
-    
-    let tyStr = f false ty
-    if !count > 0 then
-        let varNames =
-            idNameMap
-            |> PersistentHashMap.toSeq
-            |> Seq.map (fun kv  -> kv.Value )
-            |> Seq.sort
-        sprintf "forall[%s] %s" (String.concat " " varNames) tyStr
-    else
-        tyStr
+                    if isSimple then sprintf "(%s)" arrowTyStr else arrowTyStr
+            | TVar {contents = Generic id} -> 
+                        
+                            match idNameMap |> PersistentHashMap.tryFind id with
+                            | Some ty -> ty
+                            | None ->
+                                let name = nextName()
+                                idNameMap <- idNameMap |> PersistentHashMap.set id name 
+                                name
+                    
+            | TVar {contents = Unbound(id, _)} -> "_" + string id
+            | TVar {contents = Link ty} -> f isSimple ty
+        
+        let tyStr = f false ty
+        if !count > 0 then
+            let varNames =
+                idNameMap
+                |> PersistentHashMap.toSeq
+                |> Seq.map (fun kv  -> kv.Value )
+                |> Seq.sort
+            sprintf "forall[%s] %s" (String.concat " " varNames) tyStr
+        else
+            tyStr
 
 let currentId = ref 0
 
@@ -169,7 +171,7 @@ let rec unify (ty1) (ty2) =
         | ty, TVar ({contents = Unbound(id, level)} as tvar) ->
                 occursCheckAdjustLevels id level ty
                 tvar := Link ty
-        | _, _ -> error (sprintf "cannot unify types %s and %s"  (stringOfTy ty1) (stringOfTy ty2))
+        | _, _ -> error (sprintf "cannot unify types %s and %s"  (ty.toString ty1) (ty.toString ty2))
 
 let rec generalize level ty =
     match ty with
