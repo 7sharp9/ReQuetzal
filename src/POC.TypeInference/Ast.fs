@@ -82,8 +82,8 @@ module ty =
 
 type env = (string * ty) list
 
-let makeFunctionType fromType toType =
-  TypeOperator({ name = "->"; types = [fromType; toType] })
+let makeFunctionType fromTy toTy =
+  TypeOperator({ name = "->"; types = [fromTy; toTy] })
 let intType = TypeOperator({ name = "int"; types = [] })
 let boolType = TypeOperator({ name = "bool"; types = [] })
 
