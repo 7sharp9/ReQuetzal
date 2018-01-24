@@ -1,4 +1,4 @@
-module Ast
+module rec Ast
 open System
 open System.Collections
 
@@ -19,13 +19,14 @@ type exp =
     //Recursive Let binding
     | LetRec of name:string * definition:exp * body:exp
 
-let rec expToString (exp : exp) =
-    match exp with
-    | Ident name -> name
-    | Lambda(v, body) -> sprintf "fun %s -> %s" v (expToString body)
-    | Apply(fn, arg) -> sprintf "%s %s" (expToString fn) (expToString arg)
-    | Let(v, def, body) -> sprintf "let %s = %s in %s" v (expToString def) (expToString body)
-    | LetRec(v, def, body) -> sprintf "let rec %s = %s in %s" v (expToString def) (expToString body)
+module exp =
+    let rec toString (exp : exp) =
+        match exp with
+        | Ident name -> name
+        | Lambda(v, body) -> sprintf "fun %s -> %s" v (toString body)
+        | Apply(fn, arg) -> sprintf "%s %s" (toString fn) (toString arg)
+        | Let(v, def, body) -> sprintf "let %s = %s in %s" v (toString def) (toString body)
+        | LetRec(v, def, body) -> sprintf "let rec %s = %s in %s" v (toString def) (toString body)
 
 ///A type variable standing for an arbitrary type.
 ///All type variables have a unique id, but names are only assigned lazily, when required.
@@ -64,19 +65,20 @@ let variableName (v: tyvar) : string =
       nextUniqueName := string (int (!nextUniqueName).[0] + 1)
       newVarName
 
-let rec typeToString ty =
-  match ty with
-  | TypeVariable( { instance = Some(instance)} ) -> typeToString instance
-  | TypeVariable( { instance = None } as v ) -> variableName v
-  | TypeOperator( { name = tyopName; types = tyopTypes } ) ->
-      match List.length tyopTypes with
-      | 0 -> tyopName
-      | 2 -> sprintf "(%s %s %s)"
-               (typeToString (List.item 0 tyopTypes))
-               tyopName
-               (typeToString (List.item 1 tyopTypes ))
-      | _ -> sprintf "%s %s" tyopName
-               (String.concat " " (List.map typeToString tyopTypes))
+module ty =
+    let rec toString ty =
+      match ty with
+      | TypeVariable( { instance = Some(instance)} ) -> toString instance
+      | TypeVariable( { instance = None } as v ) -> variableName v
+      | TypeOperator( { name = tyopName; types = tyopTypes } ) ->
+          match List.length tyopTypes with
+          | 0 -> tyopName
+          | 2 -> sprintf "(%s %s %s)"
+                   (toString (List.item 0 tyopTypes))
+                   tyopName
+                   (toString (List.item 1 tyopTypes ))
+          | _ -> sprintf "%s %s" tyopName
+                   (String.concat " " (List.map toString tyopTypes))
 
 type env = (string * ty) list
 
@@ -154,7 +156,7 @@ let rec unify t1 t2 =
   | (TypeOperator(_) as a), (TypeVariable(_) as b) -> unify b a
   | (TypeOperator({ name = name1; types = types1 }) as a), (TypeOperator({ name = name2; types = types2 }) as b) ->
     if (name1 <> name2 || List.length types1 <> List.length types2)
-    then failwith (sprintf "Type mismatch %s != %s" (typeToString a) (typeToString b))
+    then failwith (sprintf "Type mismatch %s != %s" (ty.toString a) (ty.toString b))
     ignore (List.map2 unify types1 types2)
 
 ///Computes the type of the expression given by node.
@@ -191,12 +193,12 @@ let analyse exp env =
       loop body newEnv nonGeneric
   loop exp env Set.empty
 
-let tryExp env exp =
-  Printf.printf "%s : " (expToString exp)
+let tryExp env (exp: exp) =
+  Printf.printf "%s : " (Ast.exp.toString exp)
   let result =
     try
       let t = analyse exp env in
-      typeToString t
+      ty.toString t
     with
     | ex -> ex.Message
   Printf.printf "%s\n\n" result
