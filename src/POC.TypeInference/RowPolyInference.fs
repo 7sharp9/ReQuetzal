@@ -226,14 +226,14 @@ let rec unify (ty1) (ty2) =
         //records
         | TRecord row1, TRecord row2 -> unify row1 row2
         | TRowEmpty, TRowEmpty -> ()
-        | TRowExtend(label1, fieldTy1, restRow1) as row1, (TRowExtend _ as row2) ->
+        | TRowExtend(label1, fieldTy1, restRow1), (TRowExtend _ as row2) ->
             let restRow1TvarRefOption =
                 match restRow1 with
                 | TVar ({contents = Unbound _} as tvar_ref) -> Some tvar_ref
                 | _ -> None
             let restRow2 = rewriteRow row2 label1 fieldTy1
             match restRow1TvarRefOption with
-            | Some {contents = Link a} -> failwithf "Error: recursive row type of %A" restRow1
+            | Some {contents = Link _} -> failwithf "Error: recursive row type of %A" restRow1
             | _ -> ()
             unify restRow1 restRow2
         | _, _ -> error (sprintf "cannot unify types %s and %s"  (ty.toString ty1) (ty.toString ty2))
