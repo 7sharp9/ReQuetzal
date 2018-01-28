@@ -259,9 +259,9 @@ let rec generalize level ty =
     | TVar {contents = Unbound(id, otherLevel)} when otherLevel > level ->
         TVar (ref (Generic id))
     | TApp(ty, tyArgList) ->
-        TApp(generalize level ty, List.map (generalize level) tyArgList)
+        TApp(generalize level ty, tyArgList |> List.map (generalize level) )
     | TArrow(paramTyList, returnTy) ->
-        TArrow(List.map (generalize level) paramTyList, generalize level returnTy)
+        TArrow(paramTyList |> List.map (generalize level), generalize level returnTy)
     | TVar {contents = Link ty } ->
         generalize level ty
     | TRecord row ->
