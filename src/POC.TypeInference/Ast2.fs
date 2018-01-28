@@ -3,7 +3,7 @@
 //This implementation uses several optimizations over the naive implementation. 
 //Instead of explicit substitutions when unifying types, it uses updateable references. 
 //It also tags unbound type variables with levels or ranks to optimize generalizations of let bindings, 
-//a technique first described by Didier Rémy [1]. A very eloquent description of the ranked type variables 
+//a technique first described by Didier Rémy. A very eloquent description of the ranked type variables 
 //algorithm and associated optimizations was written by Oleg Kiselyov, see http://okmij.org/ftp/ML/generalization.html
 
 module rec Ast2

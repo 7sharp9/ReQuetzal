@@ -2,8 +2,10 @@
 
 [<EntryPoint>]
 let main argv =
+    //inference algorith1
     List.iter (Ast.tryExp Ast.myEnv) Ast.examples
 
+    //inference algorithm2
     [Ast2.example1; Ast2.example2; Ast2.example3; Ast2.example4; Ast2.example5]
     |> List.iter (fun e -> Ast2.resetId()
                            let ty = Ast2.infer Ast2.Env.empty 0 e
@@ -21,5 +23,25 @@ let main argv =
                                | Ast2.TVar(tvarref) -> printfn "tvar"
                            printfn "%s" (Ast2.exp.toString e)
                            printfn ": %s" (Ast2.ty.toString generalizedTy) )
+
+    //inference algorithm2 with row poly extension
+    printfn "--------------------------"
+    printfn "Row Polymorphism extension"
+    printfn "%s" (RowPoly.exp.toString RowPoly.recordRecurse)
+
+    try
+        [RowPoly.recordRecurse]
+        |> List.iter (fun e -> RowPoly.resetId()
+                               
+                               let ty = RowPoly.infer RowPoly.basicEnv 0 e
+                               let generalizedTy = RowPoly.generalize (-1) ty
+                               match generalizedTy with
+                               | RowPoly.TConst  name -> printfn "tconst %s" name
+                               | RowPoly.TApp(ty, tylist) -> printfn "tapp"
+                               | RowPoly.TArrow(tylist, ty) -> printfn "tarrow: params: %A, ty: %A" tylist ty
+                               | RowPoly.TVar(tvarref) -> printfn "tvar"
+                               printfn "%s" (RowPoly.exp.toString e)
+                               printfn ": %s" (RowPoly.ty.toString generalizedTy) )
+    with ex -> printfn "%s" ex.Message
     0
 

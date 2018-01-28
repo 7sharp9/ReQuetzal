@@ -11,6 +11,7 @@
     <Compile Include="PersistantHashMapModule.fs" />
     <Compile Include="Ast.fs" />
     <Compile Include="Ast2.fs" />
+    <Compile Include="RowPolyInference.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
