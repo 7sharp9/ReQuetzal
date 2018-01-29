@@ -398,6 +398,8 @@ let basicEnv =
     
     extend "zero" (TConst "int")
     extend "one" (TConst "int")
+    extend "true" (TConst "bool")
+    extend "false" (TConst "bool")
     extend "choose" (TArrow([TVar {contents = Generic 0;}; TVar {contents = Generic 0}], TVar {contents = Generic 0}))
     !env
 
@@ -430,9 +432,21 @@ let example4 =
 let example5 = 
     Fun(["x"], Let("y", Var "x", Var "y"))
 
+
+
+///{ }
 let example6 =
-    //{a = one}"
+    RecordEmpty
+
+///{a = one}"
+let example7 =    
     RecordExtend("a", Var "one", RecordEmpty)
+
+///{a = one, b = true}
+let example8 =
+    RecordExtend("a", Var("one"), RecordExtend("b", Var("true"), RecordEmpty) )
+
+
 let recordRecurse = 
     //fun r -> choose({x = zero | r}, {y = one | r})
     Fun(["r"], Call( Var("choose"), [RecordExtend("x", Var("zero"), Var("r")); RecordExtend("y", Var("one"), Var("r")) ]))

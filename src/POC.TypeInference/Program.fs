@@ -27,21 +27,21 @@ let main argv =
     //inference algorithm2 with row poly extension
     printfn "--------------------------"
     printfn "Row Polymorphism extension"
-    printfn "%s" (RowPoly.exp.toString RowPoly.recordRecurse)
 
     try
-        [RowPoly.recordRecurse]
+        [RowPoly.example6;RowPoly.example7; RowPoly.example8]
         |> List.iter (fun e -> RowPoly.resetId()
                                
                                let ty = RowPoly.infer RowPoly.basicEnv 0 e
                                let generalizedTy = RowPoly.generalize (-1) ty
-                               match generalizedTy with
-                               | RowPoly.TConst  name -> printfn "tconst %s" name
-                               | RowPoly.TApp(ty, tylist) -> printfn "tapp"
-                               | RowPoly.TArrow(tylist, ty) -> printfn "tarrow: params: %A, ty: %A" tylist ty
-                               | RowPoly.TVar(tvarref) -> printfn "tvar"
+                            //    match generalizedTy with
+                            //    | RowPoly.TConst  name -> printfn "tconst %s" name
+                            //    | RowPoly.TApp(ty, tylist) -> printfn "tapp"
+                            //    | RowPoly.TArrow(tylist, ty) -> printfn "tarrow: params: %A, ty: %A" tylist ty
+                            //    | RowPoly.TVar(tvarref) -> printfn "tvar"
                                printfn "%s" (RowPoly.exp.toString e)
-                               printfn ": %s" (RowPoly.ty.toString generalizedTy) )
+                               printfn ": %s" (RowPoly.ty.toString generalizedTy)
+                               printfn "" )
     with ex -> printfn "%s" ex.Message
     0
 
