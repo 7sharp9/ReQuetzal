@@ -435,16 +435,31 @@ let example5 =
 
 
 ///{ }
+/// :{ }
 let example6 =
     RecordEmpty
 
 ///{a = one}"
+///: {a : int}
 let example7 =    
     RecordExtend("a", Var "one", RecordEmpty)
 
+
 ///{a = one, b = true}
+///: {a : int, b : bool}
 let example8 =
     RecordExtend("a", Var("one"), RecordExtend("b", Var("true"), RecordEmpty) )
+
+///{b = true, a = one}
+///: {b : bool, a : int}
+let example9 =
+    RecordExtend("b", Var("true"), RecordExtend("a", Var("one"), RecordEmpty))
+
+///{a = one, b = true}.a
+///: int
+let example10 = 
+    RecordSelect(RecordExtend("a", Var("one"), RecordExtend("b", Var("true"), RecordEmpty)), "a")
+
 
 
 let recordRecurse = 
