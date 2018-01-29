@@ -1,4 +1,5 @@
 ﻿open System
+open RowPoly
 
 [<EntryPoint>]
 let main argv =
@@ -29,7 +30,7 @@ let main argv =
     printfn "Row Polymorphism extension"
 
     try
-        [RowPoly.example6; RowPoly.example7; RowPoly.example8; RowPoly.example9; RowPoly.example10]
+        [RowPoly.example6; RowPoly.example7; RowPoly.example8; RowPoly.example9; RowPoly.example10; example11; RowPoly.example12]
         |> List.iter (fun e -> RowPoly.resetId()
                                
                                let ty = RowPoly.infer RowPoly.basicEnv 0 e

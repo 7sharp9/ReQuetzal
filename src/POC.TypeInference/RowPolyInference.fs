@@ -460,6 +460,15 @@ let example9 =
 let example10 = 
     RecordSelect(RecordExtend("a", Var("one"), RecordExtend("b", Var("true"), RecordEmpty)), "a")
 
+///{a = one, b = true}.b
+///: bool
+let example11 = 
+    RecordSelect(RecordExtend("a", Var("one"), RecordExtend("b", Var("true"), RecordEmpty)), "b")
+
+///{f = fun x -> x}
+///: {f : a -> a}
+let example12 =
+    RecordExtend("f", Fun(["x"], Var("x")), RecordEmpty)
 
 
 let recordRecurse = 
