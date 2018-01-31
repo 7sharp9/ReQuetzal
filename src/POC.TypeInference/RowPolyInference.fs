@@ -166,9 +166,6 @@ let resetId() = currentId := 0
 let newVar level = TVar (ref (Unbound(nextId (), level)))
 let newGenVar() = TVar (ref (Generic(nextId ())))
 
-exception Error of string
-let error msg = raise (Error msg)
-
 //refactor to use mutable persistanthashmap or state monad?
 module Env =
     type env = Map<String, ty>
@@ -182,14 +179,14 @@ let occursCheckAdjustLevels tvarId tvarLevel ty =
     let rec occursRec ty =
         match ty with
         | TVar {contents = Link ty} -> occursRec ty
-        | TVar {contents = Generic _} -> assert false
+        | TVar {contents = Generic _} -> failwithf "Generic TVar should not be matched here"
         | TVar ({contents = Unbound(otherId, otherLevel)} as otherTvar) ->
-                if otherId = tvarId then
-                    error (sprintf "recursive types are not allowed: %A" ty)
-                else
-                    if otherLevel > tvarLevel then
-                        otherTvar := Unbound(otherId, tvarLevel)
-                    else ()
+            if otherId = tvarId then
+                failwithf "recursive types are not allowed: %A" ty
+            else
+                if otherLevel > tvarLevel then
+                    otherTvar := Unbound(otherId, tvarLevel)
+                else ()
         | TApp(ty, tyArgList) ->
                 occursRec ty
                 List.iter occursRec tyArgList
@@ -218,7 +215,7 @@ let rec unify (ty1) (ty2) =
         | TVar {contents = Link ty1}, ty2
         | ty1, TVar {contents = Link ty2} -> unify ty1 ty2
         | TVar {contents = Unbound(id1, _)}, TVar {contents = Unbound(id2, _)} when id1 = id2 ->
-                assert false //There is only a single instance of a particular type variable
+                failwithf "Error: There should only a single instance of a particular type variable"
         | TVar ({contents = Unbound(id, level)} as tvar), ty
         | ty, TVar ({contents = Unbound(id, level)} as tvar) ->
                 occursCheckAdjustLevels id level ty
@@ -236,11 +233,12 @@ let rec unify (ty1) (ty2) =
             | Some {contents = Link _} -> failwithf "Error: recursive row type of %A" restRow1
             | _ -> ()
             unify restRow1 restRow2
-        | _, _ -> error (sprintf "cannot unify types %s and %s"  (ty.toString ty1) (ty.toString ty2))
+        | a, b -> 
+            failwithf "cannot unify types %s and %s"  (ty.toString a) (ty.toString b)
 
 and rewriteRow row2 label1 fieldTy1 =
     match row2 with
-    | TRowEmpty -> error ("row does not contain label " + label1)
+    | TRowEmpty -> failwithf "row does not contain label %s" label1
     | TRowExtend(label2, fieldTy2, restRow2) when label2 = label1 ->
             unify fieldTy1 fieldTy2 ;
             restRow2
@@ -252,7 +250,7 @@ and rewriteRow row2 label1 fieldTy1 =
             let ty2 = TRowExtend(label1, fieldTy1, restRow2)
             tvar := Link ty2
             restRow2
-    | _ -> error "row type expected"
+    | _ -> failwithf "row type expected"
 
 let rec generalize level ty =
     match ty with
@@ -302,7 +300,7 @@ let rec matchFunTy numParams ty =
     match ty with
     | TArrow(paramTyList, returnTy) ->
             if List.length paramTyList <> numParams then
-                error (sprintf "unexpected number of arguments, expected %i but was %i" numParams (List.length paramTyList) )
+                failwithf "unexpected number of arguments, expected %i but was %i" numParams (List.length paramTyList)
             else paramTyList, returnTy
     | TVar {contents = Link ty} -> matchFunTy numParams ty
     | TVar ({contents = Unbound(_id, level)} as tvar) ->
@@ -315,17 +313,16 @@ let rec matchFunTy numParams ty =
             let returnTy = newVar level
             tvar := Link (TArrow(paramTyList, returnTy))
             paramTyList, returnTy
-    | other -> error (sprintf "expected a function but was a %A" other)
+    | other -> failwithf "expected a function but was a %A" other
 
 let rec infer env level exp =
-    try
         match exp with
         // x : σ ∈ Γ
         // --−−−−−−−
         // Γ ⊢ x : σ
         | Var name ->
                 try instantiate level (Env.lookup env name)
-                with _ex -> failwithf "variable %s not found" name
+                with ex -> failwithf "variable %s not found" name
         ///  Γ , x : τ ⊢ e : τ′
         /// −−−−−−−−−−−−−−------
         /// Γ ⊢ λ x . e : τ → τ′
@@ -383,10 +380,6 @@ let rec infer env level exp =
                 unify param1Ty (infer env level expr)
                 unify param2Ty (infer env level recordExpr)
                 returnTy
-    with ex ->
-        printfn "%A" ex
-        printfn "Env:\n%A" env
-        reraise()
 
 
 
@@ -401,6 +394,8 @@ let basicEnv =
     extend "true" (TConst "bool")
     extend "false" (TConst "bool")
     extend "choose" (TArrow([TVar {contents = Generic 0;}; TVar {contents = Generic 0}], TVar {contents = Generic 0}))
+    extend "succ" (TArrow([TConst("int")], TConst("int")))
+    extend "id" (TArrow([TVar {contents = Unbound(0,0)}], TVar {contents = Unbound(0,0)}))
     !env
 
     
@@ -469,6 +464,12 @@ let example11 =
 ///: {f : a -> a}
 let example12 =
     RecordExtend("f", Fun(["x"], Var("x")), RecordEmpty)
+
+///let r = {a = id, b = succ} in choose(r.a, r.b)
+let example13 =
+    Let("r", (RecordExtend("a", Var("id"), RecordExtend("b", Var("succ"), RecordEmpty))),
+        Call(Var("choose"), [RecordSelect(Var("r"), "a"); RecordSelect(Var("r"), "b")])
+    )
 
 
 let recordRecurse = 
