@@ -13,6 +13,7 @@ let main argv =
                                printfn "********************"
                                let ty = Ast2.infer Ast2.Env.empty 0 e
                                let generalizedTy = Ast2.generalize (-1) ty
+                               printfn "%s" (Ast2.exp.toString e)
                                printfn ": %s" (Ast2.ty.toString generalizedTy)
                                printfn "" )
 
