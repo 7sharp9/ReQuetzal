@@ -179,7 +179,8 @@ let occursCheckAdjustLevels tvarId tvarLevel ty =
     let rec occursRec ty =
         match ty with
         | TVar {contents = Link ty} -> occursRec ty
-        | TVar {contents = Generic _} -> failwithf "Generic TVar should not be matched here"
+        | TVar {contents = Generic _} as tvar->
+            ()//failwithf "%A should not be matched here for ty: %A" tvar ty
         | TVar ({contents = Unbound(otherId, otherLevel)} as otherTvar) ->
             if otherId = tvarId then
                 failwithf "recursive types are not allowed: %A" ty
@@ -233,8 +234,8 @@ let rec unify (ty1) (ty2) =
             | Some {contents = Link _} -> failwithf "Error: recursive row type of %A" restRow1
             | _ -> ()
             unify restRow1 restRow2
-        | a, b -> 
-            failwithf "cannot unify types %s and %s"  (ty.toString a) (ty.toString b)
+        | _, _ ->
+            failwithf "cannot unify types %s and %s"  (ty.toString ty1) (ty.toString ty2)
 
 and rewriteRow row2 label1 fieldTy1 =
     match row2 with
@@ -393,9 +394,10 @@ let basicEnv =
     extend "one" (TConst "int")
     extend "true" (TConst "bool")
     extend "false" (TConst "bool")
-    extend "choose" (TArrow([TVar {contents = Generic 0;}; TVar {contents = Generic 0}], TVar {contents = Generic 0}))
+    ///let choose (a:'a) (b:'a) = a
+    extend "choose" (TArrow([TVar {contents = Generic 0}; TVar {contents = Generic 0}], TVar {contents = Generic 0}))
     extend "succ" (TArrow([TConst("int")], TConst("int")))
-    extend "id" (TArrow([TVar {contents = Unbound(0,0)}], TVar {contents = Unbound(0,0)}))
+    extend "id" (TArrow([TVar {contents = Generic 0}], TVar {contents = Generic 0}))
     !env
 
     
@@ -426,8 +428,6 @@ let example4 =
 ///fun x -> let y = x in y
 let example5 = 
     Fun(["x"], Let("y", Var "x", Var "y"))
-
-
 
 ///{ }
 /// :{ }
@@ -468,6 +468,12 @@ let example12 =
 ///let r = {a = id, b = succ} in choose(r.a, r.b)
 let example13 =
     Let("r", (RecordExtend("a", Var("id"), RecordExtend("b", Var("succ"), RecordEmpty))),
+        Call(Var("choose"), [RecordSelect(Var("r"), "a"); RecordSelect(Var("r"), "b")])
+    )
+
+///let r = {a = id, b = fun x -> x} in choose(r.a, r.b)
+let example14 =
+    Let("r", (RecordExtend("a", Var("id"), RecordExtend("b", Fun(["x"], Var("x")), RecordEmpty))), 
         Call(Var("choose"), [RecordSelect(Var("r"), "a"); RecordSelect(Var("r"), "b")])
     )
 

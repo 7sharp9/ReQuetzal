@@ -1,2 +1,4 @@
 source https://www.nuget.org/api/v2
+nuget ExtCore
 nuget FSharp.Compiler.Service
+nuget FSharp.Core 4.3.3
