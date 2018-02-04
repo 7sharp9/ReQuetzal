@@ -2,6 +2,8 @@ module rec Ast3
 open System
 open System.Collections.Generic
 open Persistent
+open System.Data.Common
+open System.Xml.Linq
 
 type name = string
 type label = string
@@ -56,7 +58,7 @@ module Typ =
                 Set.union free1 free2
         ftvrec typ
     
-    let applySubst subst typ =
+    let apply subst typ =
         let rec apply subst typ =
             match typ with
             | TVar name ->
@@ -72,46 +74,46 @@ module Typ =
         apply subst typ
 
 module Scheme =
-   let freeTypeVariables (scheme: Scheme) =
+   let freeTypeVars (scheme: Scheme) =
        match scheme with
        | Scheme(variables, typ) ->
            let freeTypeVariables = Typ.freeTypeVariables typ
            freeTypeVariables - (Set.ofList variables)
 
 
-   let applySubst (subst: Subst) (scheme: Scheme) =
+   let apply (subst: Subst) (scheme: Scheme) =
        match scheme with
        | Scheme(variables, typ) ->
            let newSubst =
                variables
                |> List.fold (fun ns key -> ns |> Map.remove key) subst 
-           let newTyp = typ |> Typ.applySubst newSubst
+           let newTyp = typ |> Typ.apply newSubst
            Scheme(variables, newTyp)
 
 module TypeEnv =
      let remove (var : string) (typEnv: TypeEnv)=
         typEnv.Remove var
     
-     let freeTypeVariables (typEnv: TypeEnv) =
+     let freeTypeVars (typEnv: TypeEnv) =
         typEnv
         |> Seq.fold (fun state (KeyValue(_key ,value)) ->
-               Set.union state (value |> Scheme.freeTypeVariables)) Set.empty
+               Set.union state (value |> Scheme.freeTypeVars)) Set.empty
 
      let apply (subst : Subst) (typEnv: TypeEnv) =
         typEnv
-        |> Map.map (fun _k v -> v |> Scheme.applySubst subst)
+        |> Map.map (fun _k v -> v |> Scheme.apply subst)
 
 module Subst =
     /// Apply `s1` to `s2` then merge the results
     let compose s1 s2 =
         let newSubst =
-            s2 |> Map.map (fun _key value -> value |> Typ.applySubst s1)
+            s2 |> Map.map (fun _key value -> value |> Typ.apply s1)
         Map.union newSubst s1
 
 ///generalize abstracts a type over all type variables which are free
 /// in the type but not free in the given type environment.
 let generalize (env : TypeEnv) (typ : Typ) =
-    let result = Typ.freeTypeVariables typ - TypeEnv.freeTypeVariables env
+    let result = Typ.freeTypeVariables typ - TypeEnv.freeTypeVars env
     let variables = Set.toList result
     Scheme(variables, typ)
 
@@ -128,8 +130,65 @@ let instantiate (ts : Scheme) =
     match ts with
     | Scheme(variables, typ) ->
         let nvars = variables |> List.map (fun _ -> newTyVar "a") 
-        let s = Map.ofSeq (Seq.zip variables nvars)
-        typ |> Typ.applySubst s
+        let subst = Map.ofSeq (Seq.zip variables nvars)
+        typ |> Typ.apply subst
+
+let rewriteRow (row: Typ) newLabel =
+    match row with
+    | TRowEmpty -> failwithf "label %s cannot be inserted" newLabel
+    | TRowExtend(label, fieldTy, rowTail) when newLabel = label ->
+        (fieldTy, rowTail, Map.empty) //nothing to do
+    | TRowExtend(label, fieldTy, rowTail) ->
+        match rowTail with
+        | TVar name ->
+             let beta  = newTyVar "r"
+             let gamma = newTyVar "a"
+             gamma, TRowExtend(label, fieldTy, beta), Map.singleton name (TRowExtend(newLabel, gamma, beta))     
+        | _otherwise ->
+            let (fieldTy', rowTail', subst) = rewriteRow rowTail newLabel
+            fieldTy', TRowExtend(label, fieldTy, rowTail'), subst
+    | _ -> failwithf "Unexpected type: %A" row
+
+let rec unify (t1 : Typ) (t2 : Typ) : Subst =
+    match t1, t2 with
+    | TFun (l1, r1), TFun (l2, r2) ->
+        let s1 = unify l1 l2
+        let s2 = unify (r1 |> Typ.apply s1) (r2 |> Typ.apply s1)
+        Subst.compose s1 s2
+    | TVar name, typ
+    | typ, TVar name ->
+        match typ with
+        | TVar _name -> Map.empty
+        | _ when typ |> Typ.freeTypeVariables |> Set.contains name ->
+            failwithf "Occur check fails: %s vs %A" name typ
+        | _ -> Map.singleton name typ
+    | TInt, TInt -> Map.empty
+    | TBool, TBool -> Map.empty
+    | TRecord row1, TRecord row2 ->
+         unify row1 row2
+    | TRowEmpty, TRowEmpty -> Map.empty
+    | TRowExtend(label1, fieldTyp1, rowTail1), (TRowExtend(_,_,_) as row2) ->
+        let fieldTy2, rowTail2, theta1 = rewriteRow row2 label1
+        let rec loop ty =
+            match ty with
+            | TVar name -> [], Some name
+            | TRowEmpty -> [], None
+            | TRowExtend(label, fieldType, row) ->
+                let ls, mv = loop row
+                (label, fieldType) :: ls, mv
+            | _ -> failwithf "invalid row tail %A" ty
+        let result = loop rowTail1
+        match snd result with
+        | Some tv when theta1 |> Map.containsKey tv ->
+            failwithf "recursive row type"
+        | _ -> 
+            let theta2 = unify (Typ.apply theta1 fieldTyp1) (Typ.apply  theta1 fieldTy2)
+            let subst = Subst.compose theta1 theta2
+            let theta3 = unify (Typ.apply subst rowTail1) (Typ.apply subst rowTail2)
+            Subst.compose subst theta3
+    | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
+
+
 
 let test1 =
     TFun(TVar "a", TVar "a")
