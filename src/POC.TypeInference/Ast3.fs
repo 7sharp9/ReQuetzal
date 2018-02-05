@@ -4,6 +4,7 @@ open System.Collections.Generic
 open Persistent
 open System.Data.Common
 open System.Xml.Linq
+open Microsoft.VisualBasic.CompilerServices
 
 type name = string
 type label = string
@@ -187,6 +188,58 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
             let theta3 = unify (Typ.apply subst rowTail1) (Typ.apply subst rowTail2)
             Subst.compose subst theta3
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
+
+
+let rec typeInference (env : TypeEnv) (exp : exp) : Subst * Typ =
+    match exp with
+    | EVar name ->
+        match env |> Map.tryFind name with
+        | None -> failwithf "Unbound variable: %s" name
+        | Some sigma ->
+            let t = instantiate sigma
+            Map.empty, t
+    | EPrim prim -> (Map.empty, typeInferencePrim prim)
+    | EAbs(n, e) ->
+        let tv = newTyVar "a"
+        let env1 = env |> TypeEnv.remove n
+        let env2 =
+            env1 |> Map.union (Map.singleton n (Scheme([], tv) ))
+        let (s1, t1) = typeInference env2 e
+        s1, TFun( Typ.apply s1 tv, t1)
+    | EApp(e1, e2) ->
+        let s1, t1 = typeInference env e1
+        let s2, t2 = typeInference (TypeEnv.apply s1 env) e2
+        let tv = newTyVar "a"
+        let s3 = unify (Typ.apply s2 t1) (TFun(t2, tv))
+        s3 |> Subst.compose s2 |> Subst.compose s1, tv |> Typ.apply s3
+    | ELet(x, e1, e2) ->
+        let s1, t1 = typeInference env e1
+        let env1 = env |> TypeEnv.remove x
+        let scheme = generalize (TypeEnv.apply s1 env) t1
+        let env2  =  env1 |> Map.add x scheme
+        let s2, t2 = typeInference (env2 |> TypeEnv.apply s1 ) e2
+        s2 |> Subst.compose s1, t2
+
+let typeInferencePrim prim =
+    match prim with
+    | Int _ -> TInt
+    | Bool _ -> TBool
+    | Cond -> 
+        let a = newTyVar "a"
+        TFun(TBool, TFun(a, TFun(a, a)))
+    | RecordEmpty -> TRecord TRowEmpty
+    | RecordSelect label -> 
+        let a = newTyVar "a"
+        let r = newTyVar "r"
+        TFun (TRecord (TRowExtend(label, a, r)) , a)
+    | RecordExtend label  ->
+        let a = newTyVar "a"
+        let r = newTyVar "r"
+        TFun(a, TFun(TRecord r, TRecord(TRowExtend(label, a, r) )))
+    | RecordRestrict label ->
+        let a = newTyVar "a"
+        let r = newTyVar "r"
+        TFun(TRecord( (TRowExtend(label, a, r))), TRecord r)
 
 
 
