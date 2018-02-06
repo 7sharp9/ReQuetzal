@@ -74,13 +74,35 @@ module Typ =
             | TInt | TBool | TRowEmpty -> typ
         apply subst typ
 
+    let parens s =
+        sprintf "( %s )" s
+        
+    let braces s =
+        sprintf "{ %s }" s
+    let toString ty =
+        let rec parenType ty =
+            match ty with
+            |  TFun(_type1, _type2) -> parens (toString ty)
+            | _ -> toString ty
+
+        match ty with
+            | TVar name -> name
+            | TInt -> "Int"
+            | TBool -> "Bool"
+            | TFun(t, s) ->
+                (parenType t) + " -> " + (toString s)
+            | TRecord typ ->
+                sprintf "record: { %s }" ( toString typ)
+            | TRowEmpty -> "{ }"
+            | TRowExtend (label, typ, row) ->
+                sprintf "%s = %s | %s" label (toString typ) (toString row) 
+
 module Scheme =
    let freeTypeVars (scheme: Scheme) =
        match scheme with
        | Scheme(variables, typ) ->
            let freeTypeVariables = Typ.freeTypeVariables typ
            freeTypeVariables - (Set.ofList variables)
-
 
    let apply (subst: Subst) (scheme: Scheme) =
        match scheme with
@@ -107,9 +129,8 @@ module TypeEnv =
 module Subst =
     /// Apply `s1` to `s2` then merge the results
     let compose s1 s2 =
-        let newSubst =
-            s2 |> Map.map (fun _key value -> value |> Typ.apply s1)
-        Map.union newSubst s1
+        let ns2 = Map.map (fun k (v : Typ) -> Typ.apply s1 v) s2
+        Map.union ns2 s1
 
 ///generalize abstracts a type over all type variables which are free
 /// in the type but not free in the given type environment.
@@ -118,12 +139,20 @@ let generalize (env : TypeEnv) (typ : Typ) =
     let variables = Set.toList result
     Scheme(variables, typ)
 
-let newTyVar =
-    let nextIndex = ref 1
-    fun n ->
-        let nn = sprintf "%s%d" n !nextIndex
-        nextIndex := !nextIndex + 1
-        TVar nn
+
+
+let private currentId = ref 0
+
+let nextId() =
+    let id = !currentId
+    currentId := id + 1
+    id
+
+let resetId() = currentId := 0
+
+let newTyVar prefix =
+    TVar ( sprintf "%s%i" prefix (nextId ()))
+
 
 /// The instantiation function replaces all bound type variables in a
 /// type scheme with fresh type variables.
@@ -141,28 +170,30 @@ let rewriteRow (row: Typ) newLabel =
         (fieldTy, rowTail, Map.empty) //nothing to do
     | TRowExtend(label, fieldTy, rowTail) ->
         match rowTail with
-        | TVar name ->
+        | TVar alpha ->
              let beta  = newTyVar "r"
              let gamma = newTyVar "a"
-             gamma, TRowExtend(label, fieldTy, beta), Map.singleton name (TRowExtend(newLabel, gamma, beta))     
+             gamma, TRowExtend(label, fieldTy, beta), Map.singleton alpha (TRowExtend(newLabel, gamma, beta))     
         | _otherwise ->
-            let (fieldTy', rowTail', subst) = rewriteRow rowTail newLabel
-            fieldTy', TRowExtend(label, fieldTy, rowTail'), subst
+            let (fieldTy', rowTail', s) = rewriteRow rowTail newLabel
+            fieldTy', TRowExtend(label, fieldTy, rowTail'), s
     | _ -> failwithf "Unexpected type: %A" row
+
+let varBind u t =
+    match t with
+    | TVar _name -> Map.empty
+    | _ when t |> Typ.freeTypeVariables |> Set.contains u ->
+        failwithf "Occur check fails: %s vs %A" u t
+    | _ -> Map.singleton u t
 
 let rec unify (t1 : Typ) (t2 : Typ) : Subst =
     match t1, t2 with
     | TFun (l1, r1), TFun (l2, r2) ->
         let s1 = unify l1 l2
-        let s2 = unify (r1 |> Typ.apply s1) (r2 |> Typ.apply s1)
+        let s2 = unify (Typ.apply s1 r1) (Typ.apply s1 r2)
         Subst.compose s1 s2
     | TVar name, typ
-    | typ, TVar name ->
-        match typ with
-        | TVar _name -> Map.empty
-        | _ when typ |> Typ.freeTypeVariables |> Set.contains name ->
-            failwithf "Occur check fails: %s vs %A" name typ
-        | _ -> Map.singleton name typ
+    | typ, TVar name -> varBind name typ
     | TInt, TInt -> Map.empty
     | TBool, TBool -> Map.empty
     | TRecord row1, TRecord row2 ->
@@ -190,7 +221,7 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
 
 
-let rec typeInference (env : TypeEnv) (exp : exp) : Subst * Typ =
+let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
     match exp with
     | EVar name ->
         match env |> Map.tryFind name with
@@ -198,29 +229,29 @@ let rec typeInference (env : TypeEnv) (exp : exp) : Subst * Typ =
         | Some sigma ->
             let t = instantiate sigma
             Map.empty, t
-    | EPrim prim -> (Map.empty, typeInferencePrim prim)
+    | EPrim prim -> (Map.empty, tiPrim prim)
     | EAbs(n, e) ->
         let tv = newTyVar "a"
         let env1 = env |> TypeEnv.remove n
         let env2 =
             env1 |> Map.union (Map.singleton n (Scheme([], tv) ))
-        let (s1, t1) = typeInference env2 e
+        let (s1, t1) = ti env2 e
         s1, TFun( Typ.apply s1 tv, t1)
     | EApp(e1, e2) ->
-        let s1, t1 = typeInference env e1
-        let s2, t2 = typeInference (TypeEnv.apply s1 env) e2
+        let s1, t1 = ti env e1
+        let s2, t2 = ti (TypeEnv.apply s1 env) e2
         let tv = newTyVar "a"
         let s3 = unify (Typ.apply s2 t1) (TFun(t2, tv))
-        s3 |> Subst.compose s2 |> Subst.compose s1, tv |> Typ.apply s3
+        Subst.compose (Subst.compose s3 s2) s1, Typ.apply s3 tv
     | ELet(x, e1, e2) ->
-        let s1, t1 = typeInference env e1
+        let s1, t1 = ti env e1
         let env1 = env |> TypeEnv.remove x
         let scheme = generalize (TypeEnv.apply s1 env) t1
         let env2  =  env1 |> Map.add x scheme
-        let s2, t2 = typeInference (env2 |> TypeEnv.apply s1 ) e2
-        s2 |> Subst.compose s1, t2
+        let s2, t2 = ti (env2 |> TypeEnv.apply s1 ) e2
+        Subst.compose s1 s2, t2
 
-let typeInferencePrim prim =
+let tiPrim prim =
     match prim with
     | Int _ -> TInt
     | Bool _ -> TBool
@@ -243,5 +274,26 @@ let typeInferencePrim prim =
 
 
 
+//let typeInference //:: M.Map String Scheme -> Exp -> TI Type
+let typeInference env e =
+  let s, t = ti env e
+  Typ.apply s t
+
 let test1 =
-    TFun(TVar "a", TVar "a")
+    EApp (EApp(EPrim(RecordExtend "y"), (EPrim ( Int 2))), (EPrim RecordEmpty))
+
+let test2 =
+    EApp (EApp (EPrim(RecordExtend "x"), (EPrim (Int 1))), test1)
+
+let test3 =
+    EApp (EPrim (RecordSelect "y"), test2)
+
+///let f = fun r -> (_.x) r in f
+///:: { x = a5 | a7 } -> a6
+///   { x = a4 | r5 } -> a4
+let test4 =
+    ELet("f", EAbs("r", EApp( EPrim(RecordSelect "x"), EVar "r")), EVar "f" )
+
+///fun r -> (_.x) r
+let test5 =
+    EAbs("r", EApp( EPrim(RecordSelect "x") , EVar "r") )

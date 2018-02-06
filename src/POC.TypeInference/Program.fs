@@ -48,8 +48,13 @@ let main argv =
         //                        printfn "********************"
         //                        printfn ": %s" (RowPoly.ty.toString generalizedTy)
         //                        printfn "" )
-        let free = Ast3.test1 |> Ast3.Typ.freeTypeVariables
-        printfn "free type variables for %A is:\n%A" Ast3.test1 free
+        let tests =
+            [Ast3.test1; Ast3.test2; Ast3.test3; Ast3.test4; Ast3.test5]
+        tests
+        |> List.iter (fun e ->
+                               Ast3.resetId()
+                               let free = e |> Ast3.typeInference Map.empty
+                               printfn "%A : \n%s\n" e  (Ast3.Typ.toString free) )
     with
     | ex -> printfn "%s" ex.Message
     0
