@@ -2,9 +2,7 @@ module rec Ast3
 open System
 open System.Collections.Generic
 open Persistent
-open System.Data.Common
-open System.Xml.Linq
-open Microsoft.VisualBasic.CompilerServices
+open System.Xml.Xsl
 
 type name = string
 type label = string
@@ -41,38 +39,30 @@ type TypeEnv = Map<string, Scheme>
 type Subst = Map<name,Typ>
 
 module Typ =
-    let freeTypeVariables (typ: Typ) =
-        let rec ftvrec typ =
-            match typ with
-            | TVar name -> Set.singleton name
-            | TInt -> Set.empty
-            | TBool -> Set.empty
-            | TFun(type1, type2) ->
-                let free1 = ftvrec type1 
-                let free2 = ftvrec type2
-                Set.union free1 free2
-            | TRecord typ -> ftvrec typ
-            | TRowEmpty -> Set.empty
-            | TRowExtend (_label, typ, row) ->
-                let free1 = ftvrec row
-                let free2 = ftvrec typ
-                Set.union free1 free2
-        ftvrec typ
+    let rec ftv (typ: Typ) =
+        match typ with
+        | TVar name -> Set.singleton name
+        | TInt -> Set.empty
+        | TBool -> Set.empty
+        | TFun(t1, t2) -> Set.union (ftv t1) (ftv t2)
+        | TRecord typ -> ftv typ
+        | TRowEmpty -> Set.empty
+        | TRowExtend (_l, t, r) -> Set.union (ftv r) (ftv t)
     
-    let apply subst typ =
-        let rec apply subst typ =
-            match typ with
-            | TVar name ->
-                match subst |> Map.tryFind name with
-                | Some t -> t
-                | None -> TVar name
-            | TFun(type1, type2) ->
-                TFun (apply subst type1, apply subst type2)
-            | TRecord typ -> TRecord (apply subst typ)
-            | TRowExtend (label, typ, row) ->
-                TRowExtend(label, apply subst typ, apply subst row)
-            | TInt | TBool | TRowEmpty -> typ
-        apply subst typ
+    let rec apply s typ =
+        match typ with
+        | TVar n ->
+            match Map.tryFind n s with
+            | Some t -> t
+            | None -> TVar n
+        | TFun(t1, t2) ->
+            TFun (apply s t1, apply s t2)
+        | TRecord t ->
+            TRecord (apply s t)
+        | TRowExtend (l, t, r) ->
+            TRowExtend(l, apply s t, apply s r)
+        | TInt | TBool | TRowEmpty ->
+            typ
 
     let parens s =
         sprintf "( %s )" s
@@ -87,59 +77,54 @@ module Typ =
 
         match ty with
             | TVar name -> name
-            | TInt -> "Int"
-            | TBool -> "Bool"
+            | TInt -> "int"
+            | TBool -> "bool"
             | TFun(t, s) ->
                 (parenType t) + " -> " + (toString s)
             | TRecord typ ->
-                sprintf "record: { %s }" ( toString typ)
+                sprintf "{ %s }" ( toString typ)
             | TRowEmpty -> "{ }"
             | TRowExtend (label, typ, row) ->
                 sprintf "%s = %s | %s" label (toString typ) (toString row) 
 
 module Scheme =
-   let freeTypeVars (scheme: Scheme) =
+   let ftv (scheme: Scheme) =
        match scheme with
        | Scheme(variables, typ) ->
-           let freeTypeVariables = Typ.freeTypeVariables typ
-           freeTypeVariables - (Set.ofList variables)
+           Set.difference (Typ.ftv typ) (Set.ofList variables)
 
-   let apply (subst: Subst) (scheme: Scheme) =
+   let apply (s: Subst) (scheme: Scheme) =
+   //(Scheme vars t) = Scheme vars (apply (foldr M.delete s vars) t)
        match scheme with
-       | Scheme(variables, typ) ->
-           let newSubst =
-               variables
-               |> List.fold (fun ns key -> ns |> Map.remove key) subst 
-           let newTyp = typ |> Typ.apply newSubst
-           Scheme(variables, newTyp)
+       | Scheme(vars, t) ->
+           let newSubst = List.fold (fun ns key -> Map.remove key ns) s vars
+           let newTyp = Typ.apply newSubst t
+           Scheme(vars, newTyp)
 
 module TypeEnv =
-     let remove (var : string) (typEnv: TypeEnv)=
-        typEnv.Remove var
+     let remove (env: TypeEnv) (var : string)=
+         Map.remove var env
     
-     let freeTypeVars (typEnv: TypeEnv) =
-        typEnv
-        |> Seq.fold (fun state (KeyValue(_key ,value)) ->
-               Set.union state (value |> Scheme.freeTypeVars)) Set.empty
+     let ftv (typEnv: TypeEnv) =
+        Seq.fold (fun state (KeyValue(_key ,v)) ->
+            Set.union state (Scheme.ftv v)) Set.empty typEnv
 
-     let apply (subst : Subst) (typEnv: TypeEnv) =
-        typEnv
-        |> Map.map (fun _k v -> v |> Scheme.apply subst)
+     let apply (s : Subst) (env: TypeEnv) =
+        Map.map (fun _k v -> Scheme.apply s v) env
 
 module Subst =
     /// Apply `s1` to `s2` then merge the results
     let compose s1 s2 =
-        let ns2 = Map.map (fun k (v : Typ) -> Typ.apply s1 v) s2
-        Map.union ns2 s1
+        Map.union (Map.map (fun _k (v : Typ) -> Typ.apply s1 v) s2) s1
+
 
 ///generalize abstracts a type over all type variables which are free
 /// in the type but not free in the given type environment.
-let generalize (env : TypeEnv) (typ : Typ) =
-    let result = Typ.freeTypeVariables typ - TypeEnv.freeTypeVars env
-    let variables = Set.toList result
-    Scheme(variables, typ)
-
-
+let generalize (env : TypeEnv) (t : Typ) =
+    let variables =
+       Set.difference (Typ.ftv t) (TypeEnv.ftv env)
+       |> Set.toList 
+    Scheme(variables, t)
 
 let private currentId = ref 0
 
@@ -158,10 +143,10 @@ let newTyVar prefix =
 /// type scheme with fresh type variables.
 let instantiate (ts : Scheme) =
     match ts with
-    | Scheme(variables, typ) ->
-        let nvars = variables |> List.map (fun _ -> newTyVar "a") 
-        let subst = Map.ofSeq (Seq.zip variables nvars)
-        typ |> Typ.apply subst
+    | Scheme(vars, t) ->
+        let nvars = vars |> List.map (fun name -> newTyVar (string name.[0]) )
+        let s = List.zip vars nvars |> Map.ofList
+        Typ.apply s t
 
 let rewriteRow (row: Typ) newLabel =
     match row with
@@ -182,18 +167,18 @@ let rewriteRow (row: Typ) newLabel =
 let varBind u t =
     match t with
     | TVar _name -> Map.empty
-    | _ when t |> Typ.freeTypeVariables |> Set.contains u ->
+    | _ when Set.contains u (Typ.ftv t) ->
         failwithf "Occur check fails: %s vs %A" u t
     | _ -> Map.singleton u t
 
 let rec unify (t1 : Typ) (t2 : Typ) : Subst =
     match t1, t2 with
-    | TFun (l1, r1), TFun (l2, r2) ->
-        let s1 = unify l1 l2
-        let s2 = unify (Typ.apply s1 r1) (Typ.apply s1 r2)
-        Subst.compose s1 s2
-    | TVar name, typ
-    | typ, TVar name -> varBind name typ
+    | TFun (l, r), TFun (l', r') ->
+        let s1 = unify l l'
+        let s2 = unify (Typ.apply s1 r) (Typ.apply s1 r')
+        Subst.compose s2 s1
+    | TVar u, t
+    | t, TVar u -> varBind u t
     | TInt, TInt -> Map.empty
     | TBool, TBool -> Map.empty
     | TRecord row1, TRecord row2 ->
@@ -201,30 +186,30 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
     | TRowEmpty, TRowEmpty -> Map.empty
     | TRowExtend(label1, fieldTyp1, rowTail1), (TRowExtend(_,_,_) as row2) ->
         let fieldTy2, rowTail2, theta1 = rewriteRow row2 label1
-        let rec loop ty =
+        let rec toList ty =
             match ty with
             | TVar name -> [], Some name
             | TRowEmpty -> [], None
-            | TRowExtend(label, fieldType, row) ->
-                let ls, mv = loop row
-                (label, fieldType) :: ls, mv
+            | TRowExtend(l, t, r) ->
+                let ls, mv = toList r
+                (l, t) :: ls, mv
             | _ -> failwithf "invalid row tail %A" ty
-        let result = loop rowTail1
+        let result = toList rowTail1
         match snd result with
         | Some tv when theta1 |> Map.containsKey tv ->
             failwithf "recursive row type"
         | _ -> 
-            let theta2 = unify (Typ.apply theta1 fieldTyp1) (Typ.apply  theta1 fieldTy2)
-            let subst = Subst.compose theta1 theta2
-            let theta3 = unify (Typ.apply subst rowTail1) (Typ.apply subst rowTail2)
-            Subst.compose subst theta3
+            let theta2 = unify (Typ.apply theta1 fieldTyp1) (Typ.apply theta1 fieldTy2)
+            let s = Subst.compose theta2 theta1
+            let theta3 = unify (Typ.apply s rowTail1) (Typ.apply s rowTail2)
+            Subst.compose theta3 s
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
 
 
 let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
     match exp with
     | EVar name ->
-        match env |> Map.tryFind name with
+        match Map.tryFind name env with
         | None -> failwithf "Unbound variable: %s" name
         | Some sigma ->
             let t = instantiate sigma
@@ -232,9 +217,8 @@ let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
     | EPrim prim -> (Map.empty, tiPrim prim)
     | EAbs(n, e) ->
         let tv = newTyVar "a"
-        let env1 = env |> TypeEnv.remove n
-        let env2 =
-            env1 |> Map.union (Map.singleton n (Scheme([], tv) ))
+        let env1 = TypeEnv.remove env n
+        let env2 = Map.union env1 (Map.singleton n (Scheme([], tv) ))
         let (s1, t1) = ti env2 e
         s1, TFun( Typ.apply s1 tv, t1)
     | EApp(e1, e2) ->
@@ -245,55 +229,93 @@ let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
         Subst.compose (Subst.compose s3 s2) s1, Typ.apply s3 tv
     | ELet(x, e1, e2) ->
         let s1, t1 = ti env e1
-        let env1 = env |> TypeEnv.remove x
+        let env1 = TypeEnv.remove env x
         let scheme = generalize (TypeEnv.apply s1 env) t1
-        let env2  =  env1 |> Map.add x scheme
-        let s2, t2 = ti (env2 |> TypeEnv.apply s1 ) e2
-        Subst.compose s1 s2, t2
+        let env2  =  Map.add x scheme env1
+        let s2, t2 = ti (TypeEnv.apply s1 env2 ) e2
+        Subst.compose s2 s1, t2
 
 let tiPrim prim =
     match prim with
     | Int _ -> TInt
     | Bool _ -> TBool
     | Cond -> 
+        printfn "Cond"
         let a = newTyVar "a"
         TFun(TBool, TFun(a, TFun(a, a)))
-    | RecordEmpty -> TRecord TRowEmpty
+    | RecordEmpty ->
+        printfn "RecordEmpty"
+        TRecord TRowEmpty
     | RecordSelect label -> 
+        printfn "RecordSelect"
         let a = newTyVar "a"
         let r = newTyVar "r"
         TFun (TRecord (TRowExtend(label, a, r)) , a)
     | RecordExtend label  ->
+        printfn "RecordExtend"
         let a = newTyVar "a"
         let r = newTyVar "r"
         TFun(a, TFun(TRecord r, TRecord(TRowExtend(label, a, r) )))
     | RecordRestrict label ->
+        printfn "RecordRestrict"
         let a = newTyVar "a"
         let r = newTyVar "r"
-        TFun(TRecord( (TRowExtend(label, a, r))), TRecord r)
+        TFun(TRecord(TRowExtend(label, a, r)), TRecord r)
 
 
 
 //let typeInference //:: M.Map String Scheme -> Exp -> TI Type
 let typeInference env e =
   let s, t = ti env e
+  printfn "substitution: %A" s
   Typ.apply s t
 
 let test1 =
+    "r1: {y=2} :: {y = Int}",
     EApp (EApp(EPrim(RecordExtend "y"), (EPrim ( Int 2))), (EPrim RecordEmpty))
 
 let test2 =
-    EApp (EApp (EPrim(RecordExtend "x"), (EPrim (Int 1))), test1)
+    "r2: {x=1, y=2 } :: {x = Int, y = Int}",
+    EApp (EApp (EPrim(RecordExtend "x"), (EPrim (Int 1))), snd test1)
 
 let test3 =
-    EApp (EPrim (RecordSelect "y"), test2)
+    "r3: (_.y) {x=1, y=2 } :: Int",
+    EApp (EPrim (RecordSelect "y"), snd test2)
 
-///let f = fun r -> (_.x) r in f
-///:: { x = a5 | a7 } -> a6
-///   { x = a4 | r5 } -> a4
 let test4 =
+    "r4: let f = fun r -> (_.x) r in f \nexpecting :: {x = a4 | r5} -> a4",
     ELet("f", EAbs("r", EApp( EPrim(RecordSelect "x"), EVar "r")), EVar "f" )
 
-///fun r -> (_.x) r
 let test5 =
+    "r5: fun r -> (_.x) r\nexpecting :: {x = a3 | r2} -> a3",
     EAbs("r", EApp( EPrim(RecordSelect "x") , EVar "r") )
+
+let b1 =
+    "b1",
+    ELet ("id", EAbs("x", EVar "x"), EVar "id")
+
+let b2 =
+    "b2",
+    ELet ("id", EAbs( "x", EVar "x"), EApp(EVar "id", EVar "id"))
+
+let b3 =
+    "b3",
+    ELet( "id", (EAbs("x", ELet( "y", EVar "x", EVar "y"))), EApp(EVar "id", EVar "id"))
+
+let b4 =
+    "b4",
+    ELet( "id", EAbs( "x", ELet("y", EVar "x", EVar "y")),    EApp(EApp(EVar "id", EVar "id") ,EPrim (Int 2)))
+
+let b5 =
+    "b5",
+    ELet("id", EAbs( "x", EApp(EVar "x", EVar "x")), EVar "id")
+
+let b6 =
+    "b6",
+    EAbs("m", (ELet("y", EVar "m", ELet("x", (EApp(EVar "y", EPrim(Bool true))), EVar "x"))))
+
+let b7 =
+      "b6: fun f -> (fun g -> (fun arg (f g arg)))",
+      EAbs("f", EAbs("g", EAbs("arg", EApp(EVar("g"), EApp(EVar("f"), EVar("arg"))))))
+
+
