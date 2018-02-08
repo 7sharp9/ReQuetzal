@@ -2,7 +2,6 @@ module rec Ast3
 open System
 open System.Collections.Generic
 open Persistent
-open System.Xml.Xsl
 
 type name = string
 type label = string
@@ -91,10 +90,9 @@ module Scheme =
    let ftv (scheme: Scheme) =
        match scheme with
        | Scheme(variables, typ) ->
-           Set.difference (Typ.ftv typ) (Set.ofList variables)
+           Set.difference  (Set.ofList variables) (Typ.ftv typ)
 
    let apply (s: Subst) (scheme: Scheme) =
-   //(Scheme vars t) = Scheme vars (apply (foldr M.delete s vars) t)
        match scheme with
        | Scheme(vars, t) ->
            let newSubst = List.fold (fun ns key -> Map.remove key ns) s vars
@@ -240,29 +238,22 @@ let tiPrim prim =
     | Int _ -> TInt
     | Bool _ -> TBool
     | Cond -> 
-        printfn "Cond"
         let a = newTyVar "a"
         TFun(TBool, TFun(a, TFun(a, a)))
     | RecordEmpty ->
-        printfn "RecordEmpty"
         TRecord TRowEmpty
     | RecordSelect label -> 
-        printfn "RecordSelect"
         let a = newTyVar "a"
         let r = newTyVar "r"
         TFun (TRecord (TRowExtend(label, a, r)) , a)
     | RecordExtend label  ->
-        printfn "RecordExtend"
         let a = newTyVar "a"
         let r = newTyVar "r"
         TFun(a, TFun(TRecord r, TRecord(TRowExtend(label, a, r) )))
     | RecordRestrict label ->
-        printfn "RecordRestrict"
         let a = newTyVar "a"
         let r = newTyVar "r"
         TFun(TRecord(TRowExtend(label, a, r)), TRecord r)
-
-
 
 //let typeInference //:: M.Map String Scheme -> Exp -> TI Type
 let typeInference env e =
