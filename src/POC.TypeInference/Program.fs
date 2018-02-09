@@ -1,8 +1,6 @@
 ﻿open System
-open Ast2
+//open Ast2
 
-let dupe s n =
-    String.replicate n s
 [<EntryPoint>]
 let main argv =
     try
@@ -51,20 +49,33 @@ let main argv =
         //                        printfn ": %s" (RowPoly.ty.toString generalizedTy)
         //                        printfn "" )
         let tests =
-            [   //Ast3.b1; Ast3.b2; Ast3.b3; Ast3.b4; Ast3.b5; Ast3.b6; Ast3.b7
-                (*Ast3.test1; Ast3.test2; Ast3.test3;*)
-                Ast3.test4; (*Ast3.test5*)]
-        tests
-        |> List.iter (fun (name, e) ->
-                               Ast3.resetId()
-                               printfn "%s" <| dupe "*" 16
-                               printfn "%s" name
-                               printfn "%s" <| dupe "_" 16
-                               let free = e |> Ast3.typeInference Map.empty
-                               printfn "%s" <| dupe "_" 16
-                               printfn "Expression: %A" e
-                               printfn "%s" <| dupe "_" 16
-                               printfn "inferred: %s\n\n" (Ast3.Typ.toString free))
+            [   Ast3.b1; Ast3.b2; Ast3.b3; Ast3.b4; (*Ast3.b5;*) Ast3.b6; Ast3.b7
+                Ast3.test1; Ast3.test2; Ast3.test3; Ast3.test4; Ast3.test5]
+
+        let runTestBank(showInference) =
+            tests
+            |> List.iter (fun (name, exp) ->
+                                   Ast3.resetId()
+                                   
+                                   let inferred = exp |> Ast3.typeInference Map.empty 
+                                   if showInference then
+                                       printfn "%s" name
+                                       printfn "Expression: %A" exp
+                                       printfn "inferred: %s\n\n" (Ast3.Typ.toString inferred))
+        
+        let warmup = runTestBank(true)
+
+        let times =
+            [for i in 1..100 ->
+                let sw = Diagnostics.Stopwatch.StartNew()
+                runTestBank(false)
+                sw.Stop()
+                sw.Elapsed.TotalMilliseconds ]
+
+        printfn "Average bank = %f" (times |> List.average)
+        printfn "Average individual = %f" (times |> List.averageBy (fun t -> t / 11.0))
+
+
     with
     | ex -> printfn "%s" ex.Message
     0
