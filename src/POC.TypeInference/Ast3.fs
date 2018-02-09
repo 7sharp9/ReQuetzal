@@ -90,12 +90,12 @@ module Scheme =
    let ftv (scheme: Scheme) =
        match scheme with
        | Scheme(variables, typ) ->
-           Set.difference  (Set.ofList variables) (Typ.ftv typ)
+           Set.difference (Typ.ftv typ) (Set.ofList variables)
 
    let apply (s: Subst) (scheme: Scheme) =
        match scheme with
        | Scheme(vars, t) ->
-           let newSubst = List.fold (fun ns key -> Map.remove key ns) s vars
+           let newSubst = List.foldBack (fun key currentSubst -> Map.remove key currentSubst ) vars s
            let newTyp = Typ.apply newSubst t
            Scheme(vars, newTyp)
 
@@ -104,8 +104,8 @@ module TypeEnv =
          Map.remove var env
     
      let ftv (typEnv: TypeEnv) =
-        Seq.fold (fun state (KeyValue(_key ,v)) ->
-            Set.union state (Scheme.ftv v)) Set.empty typEnv
+        Seq.foldBack (fun (KeyValue(_key ,v)) state ->
+            Set.union state (Scheme.ftv v)) typEnv Set.empty
 
      let apply (s : Subst) (env: TypeEnv) =
         Map.map (fun _k v -> Scheme.apply s v) env
@@ -114,7 +114,6 @@ module Subst =
     /// Apply `s1` to `s2` then merge the results
     let compose s1 s2 =
         Map.union (Map.map (fun _k (v : Typ) -> Typ.apply s1 v) s2) s1
-
 
 ///generalize abstracts a type over all type variables which are free
 /// in the type but not free in the given type environment.
@@ -136,9 +135,7 @@ let resetId() = currentId := 0
 let newTyVar prefix =
     TVar ( sprintf "%s%i" prefix (nextId ()))
 
-
-/// The instantiation function replaces all bound type variables in a
-/// type scheme with fresh type variables.
+/// Replaces all bound type variables in a type scheme with fresh type variables.
 let instantiate (ts : Scheme) =
     match ts with
     | Scheme(vars, t) ->
@@ -164,10 +161,11 @@ let rewriteRow (row: Typ) newLabel =
 
 let varBind u t =
     match t with
-    | TVar _name -> Map.empty
+    | TVar name when name = u -> Map.empty
     | _ when Set.contains u (Typ.ftv t) ->
         failwithf "Occur check fails: %s vs %A" u t
     | _ -> Map.singleton u t
+
 
 let rec unify (t1 : Typ) (t2 : Typ) : Subst =
     match t1, t2 with
@@ -202,7 +200,6 @@ let rec unify (t1 : Typ) (t2 : Typ) : Subst =
             let theta3 = unify (Typ.apply s rowTail1) (Typ.apply s rowTail2)
             Subst.compose theta3 s
     | _ -> failwithf "Types do not unify: %A vs %A" t1 t2
-
 
 let rec ti (env : TypeEnv) (exp : exp) : Subst * Typ =
     match exp with
@@ -255,10 +252,8 @@ let tiPrim prim =
         let r = newTyVar "r"
         TFun(TRecord(TRowExtend(label, a, r)), TRecord r)
 
-//let typeInference //:: M.Map String Scheme -> Exp -> TI Type
 let typeInference env e =
   let s, t = ti env e
-  printfn "substitution: %A" s
   Typ.apply s t
 
 let test1 =
