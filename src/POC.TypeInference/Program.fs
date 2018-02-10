@@ -21,33 +21,47 @@ let main argv =
         // printfn "--------------------------"
         // printfn "Row Polymorphism extension*"
 
-        // [ 
-        //   RowPoly.example1
-        //   RowPoly.example2
-        //   RowPoly.example3
-        //   RowPoly.example4
-        //   RowPoly.example5
-        //   RowPoly.example6
-        //   RowPoly.example7
-        //   RowPoly.example8
-        //   RowPoly.example9
-        //   RowPoly.example10
-        //   RowPoly.example11
-        //   RowPoly.example12
-        //   RowPoly.example13
-        //   RowPoly.example14 ]
-        // |> List.iter (fun e -> RowPoly.resetId()
-        //                        printfn "********************"
-        //                        printfn "%s" (RowPoly.exp.toString e)
-        //                        let ty = RowPoly.infer RowPoly.basicEnv 0 e
-        //                        let generalizedTy = RowPoly.generalize (-1) ty
-        //                        printfn "********************"
-        //                        printfn "%A" ty
-        //                        printfn "********************"
-        //                        printfn "%A" generalizedTy
-        //                        printfn "********************"
-        //                        printfn ": %s" (RowPoly.ty.toString generalizedTy)
-        //                        printfn "" )
+        let mutableTests =
+            [ RowPoly.example1
+              RowPoly.example2
+              RowPoly.example3
+              RowPoly.example4
+              RowPoly.example5
+              RowPoly.example6
+              RowPoly.example7
+              RowPoly.example8
+              RowPoly.example9
+              RowPoly.example10
+              RowPoly.example11 ]
+            //   RowPoly.example12
+            //   RowPoly.example13
+            //   RowPoly.example14 ]
+
+        let runMutableTestBank(showInference) =
+            mutableTests
+            |> List.iter (fun e -> RowPoly.resetId()
+                                   
+                                   let ty = RowPoly.infer RowPoly.basicEnv 0 e
+                                   let generalizedTy = RowPoly.generalize (-1) ty
+                                   if showInference then
+                                       printfn "expression: %s" (RowPoly.exp.toString e)
+                                       printfn "inferred: %s" (RowPoly.ty.toString generalizedTy))
+
+        runMutableTestBank(true)
+
+        let mutableTimes =
+            [for i in 1..100 ->
+                let sw = Diagnostics.Stopwatch.StartNew()
+                runMutableTestBank(false)
+                sw.Stop()
+                sw.Elapsed.TotalMilliseconds ]
+
+        printfn "Mutable Average bank = %f" (mutableTimes |> List.average)
+        printfn "Mutable Average individual = %f" (mutableTimes |> List.averageBy (fun t -> t / 11.0))
+
+        //---------------------------------------------------------------
+
+
         let tests =
             [   Ast3.b1; Ast3.b2; Ast3.b3; Ast3.b4; (*Ast3.b5;*) Ast3.b6; Ast3.b7
                 Ast3.test1; Ast3.test2; Ast3.test3; Ast3.test4; Ast3.test5]
@@ -63,7 +77,7 @@ let main argv =
                                        printfn "Expression: %A" exp
                                        printfn "inferred: %s\n\n" (Ast3.Typ.toString inferred))
         
-        let warmup = runTestBank(true)
+        runTestBank(true)
 
         let times =
             [for i in 1..100 ->
