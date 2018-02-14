@@ -50,7 +50,7 @@ let main argv =
         runMutableTestBank(true)
 
         let mutableTimes =
-            [for i in 1..100 ->
+            [for i in 1..1000 ->
                 let sw = Diagnostics.Stopwatch.StartNew()
                 runMutableTestBank(false)
                 sw.Stop()
@@ -59,7 +59,7 @@ let main argv =
         printfn "Mutable Average bank = %f" (mutableTimes |> List.average)
         printfn "Mutable Average individual = %f" (mutableTimes |> List.averageBy (fun t -> t / 11.0))
 
-        //---------------------------------------------------------------
+        printfn "---------------------------------------------------------------"
 
 
         let tests =
@@ -80,7 +80,7 @@ let main argv =
         runTestBank(true)
 
         let times =
-            [for i in 1..100 ->
+            [for i in 1..1000 ->
                 let sw = Diagnostics.Stopwatch.StartNew()
                 runTestBank(false)
                 sw.Stop()
