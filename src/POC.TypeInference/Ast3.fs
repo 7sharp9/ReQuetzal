@@ -1,7 +1,6 @@
 module rec Ast3
 open System
 open System.Collections.Generic
-open Persistent
 
 type name = string
 type label = string

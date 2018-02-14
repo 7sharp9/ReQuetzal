@@ -8,7 +8,7 @@
 
 module rec Ast2
 open System
-open Persistent
+open ExtCore
 type name = string
 
 type expr =
@@ -58,7 +58,7 @@ module exp =
 
 module ty =
     let toString ty : string =
-        let mutable idNameMap = PersistentHashMap.empty
+        let mutable idNameMap = HashMap.empty
         let count = ref 0
         let nextName () =
             let i = !count
@@ -87,11 +87,11 @@ module ty =
                     if isSimple then sprintf "(%s)" arrowTyStr else arrowTyStr
             | TVar {contents = Generic id} -> 
                         
-                            match idNameMap |> PersistentHashMap.tryFind id with
+                            match idNameMap |> HashMap.tryFind id with
                             | Some ty -> ty
                             | None ->
                                 let name = nextName()
-                                idNameMap <- idNameMap |> PersistentHashMap.set id name 
+                                idNameMap <- idNameMap |> HashMap.add id name 
                                 name
                     
             | TVar {contents = Unbound(id, _)} -> "_" + string id
@@ -101,8 +101,8 @@ module ty =
         if !count > 0 then
             let varNames =
                 idNameMap
-                |> PersistentHashMap.toSeq
-                |> Seq.map (fun kv  -> kv.Value )
+                |> HashMap.toSeq
+                |> Seq.map (fun (k,v)  -> v )
                 |> Seq.sort
             sprintf "forall[%s] %s" (String.concat " " varNames) tyStr
         else
@@ -188,17 +188,17 @@ let rec generalize level ty =
 
 let instantiate level ty =
     //could easily just be a dictionary/ Hashtable, or even state monad
-    let mutable idVarMap = PersistentHashMap.empty
+    let mutable idVarMap = HashMap.empty
     let rec instantiateRec ty =
         match ty with
         | TConst _ -> ty
         | TVar {contents = Link ty} -> instantiateRec ty
         | TVar {contents = Generic id} ->
-                match idVarMap |> PersistentHashMap.tryFind id with
+                match idVarMap |> HashMap.tryFind id with
                 | Some ty -> ty
                 | None ->
                     let var = newVar level
-                    idVarMap <- idVarMap |> PersistentHashMap.set id var
+                    idVarMap <- idVarMap |> HashMap.add id var
                     var
         | TVar {contents = Unbound _} -> ty
         | TApp(ty, tyArgList) ->
