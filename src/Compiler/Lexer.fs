@@ -1,5 +1,6 @@
 namespace Compiler
 
+
 module LexerTypes =
 
     // *************************************
@@ -14,22 +15,22 @@ module LexerTypes =
     type Ident = Ident of string
 
     type Keyword =
-        | Let | Var
-        | If | Then | Else
-        | For | In | Do
-        | Type
-        | With
+        | Let
+        // | If | Then | Else
+        // | For | In | Do
 
     type Separator =
         | LParentheses | RParentheses
-        | LBracket | RBracket
-        | LBraces | RBraces 
+        // | LBracket | RBracket
+        // | LBraces | RBraces 
         | Comma | Colon
+        | Arrow
+
+
 
     type Operator =
         | Add | Mult | Div | Subs | And | Or
         | Inferior | Superior | Equal 
-        | Assign 
        
     type Literal =
         | Unit
@@ -41,6 +42,11 @@ module LexerTypes =
         | LineComment of string
         | BlockComment of string 
 
+    type Indentation =
+        | Indent of int
+        | Dedent of int
+        | NoDent // No Indentation and no Dedentation
+
     /// Represent the different possible tokens generated from the lexing
     type TokenType =
         | Identifier of Ident
@@ -49,6 +55,8 @@ module LexerTypes =
         | Operator of Operator
         | Literal of Literal
         | Comment of Comment
+        | Indentation of Indentation
+        | EOF
 
     /// Represent the starting location of a particular element
     type Column = Column of int
@@ -66,15 +74,11 @@ module LexerTypes =
             Location    : Location
         }
 
-
-
-
 module LexerMappings =
     open LexerTypes
     
     let mapOps =
-        [   "<-"  , Assign
-            "+"   , Add
+        [   "+"   , Add
             "*"   , Mult
             "/"   , Div
             "-"   , Subs
@@ -88,12 +92,9 @@ module LexerMappings =
 
 
     let mapSeps =
-        [   "(" , LParentheses
+        [   "->", Arrow
+            "(" , LParentheses
             ")" , RParentheses
-            "[" , LBracket
-            "]" , RBracket
-            "{" , LBraces
-            "}" , RBraces
             "," , Comma
             ":" , Colon
         ]
@@ -101,20 +102,8 @@ module LexerMappings =
 
     let mapKeywords =
         [   "let"   , Let
-            "var"   , Var
-            "if"    , If
-            "then"  , Then
-            "else"  , Else
-            "for"   , For
-            "in"    , In
-            "do"    , Do
-            "Type"  , Type
-            "With"  , With
         ]
         |> Map.ofList
-
-        
-
 
 module LexerRegexDefinition =
 
@@ -145,15 +134,13 @@ module LexerRegexDefinition =
     let newline     = "\n\r|\n|\r"
 
     // Identifiers or keywords
-    let identifierOrKeyword  = sprintf "%s[a-zA-Z0-9]*" char
+    let identifierOrKeyword  = sprintf "[\'_]?%s[a-zA-Z0-9]*" char
 
     // Operators
     let operators   = ["<\-";"\+";"\*";"/";"\-";"&&";"\|\|";"<";">";"="] |> String.concat("|")
 
     // Separators
-    let separators  = ["\(";"\)";"\[";"\]";"\{";"\}";",";":"] |> String.concat("|")
-
-
+    let separators  = ["\->";"\(";"\)";"\[";"\]";"\{";"\}";",";":"] |> String.concat("|")
 
 module LexerActivePatterns =
     open LexerRegexDefinition
@@ -375,7 +362,14 @@ module LexerTokenization =
                     } 
                 lexToken leftOver newState
 
-            | EndOfFile             _ -> state.InversedTokens |> List.rev
+            | EndOfFile             _ -> 
+                let token =
+                    {
+                        TokenType   = EOF
+                        Location    = state.CurrentLocation
+                    }
+                let state = { state with InversedTokens = token::state.InversedTokens } 
+                state.InversedTokens |> List.rev
             
             | _ -> failwith "unexpected stuff"
 
@@ -392,10 +386,56 @@ module LexerTokenization =
 
         lexToken input initState
 
-    let input = 
-        "(* 
-Some Multiline comment
- *)
-let id //some comment*)a = a"
 
-    let res = lexing input
+    let addIndentationTokens (tokens:Token list) =
+        let rec aux (tokens:Token list) previousLineNumber previousColumnNumber tokensToReturn =
+            match tokens with
+            | [] -> List.rev tokensToReturn
+            | token::tokens ->
+                let location = token.Location
+                if location.Line > previousLineNumber then
+                    let indentToken =
+                        let tokenType =
+                            if previousColumnNumber = location.Column then
+                                NoDent
+                            elif previousColumnNumber < location.Column then
+                                let (Column column) = location.Column
+                                let (Column prevColumn) = previousColumnNumber 
+                                Indent (column - prevColumn)
+                            else
+                                let (Column column) = location.Column
+                                let (Column prevColumn) = previousColumnNumber 
+                                Dedent (prevColumn - column)
+                            |> Indentation
+                        {   
+                            TokenType = tokenType
+                            Location  = 
+                                {   Line    = location.Line
+                                    Column  = Column 0
+                                }
+                        }
+
+
+                    aux tokens (location.Line) (location.Column) (token::indentToken::tokensToReturn)
+                else
+                    aux tokens (previousLineNumber) (previousColumnNumber) (token::tokensToReturn)
+
+        aux tokens (tokens.Head.Location.Line) (tokens.Head.Location.Column) []                
+
+
+    let lexicalAnalysis = lexing >> addIndentationTokens
+
+
+
+    let input = 
+        "add: int -> int -> int
+add a b =
+    a + b"
+
+    let res = lexicalAnalysis input
+
+
+
+
+
+
