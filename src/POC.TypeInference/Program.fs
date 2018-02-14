@@ -32,10 +32,11 @@ let main argv =
               RowPoly.example8
               RowPoly.example9
               RowPoly.example10
-              RowPoly.example11 ]
-            //   RowPoly.example12
-            //   RowPoly.example13
-            //   RowPoly.example14 ]
+              RowPoly.example11
+              RowPoly.example12
+              RowPoly.example13
+              RowPoly.example14
+              RowPoly.example15 ]
 
         let runMutableTestBank(showInference) =
             mutableTests
