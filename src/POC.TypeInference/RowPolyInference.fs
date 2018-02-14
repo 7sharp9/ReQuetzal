@@ -10,7 +10,8 @@
 
 module RowPoly
 open System
-open Persistent
+open ExtCore
+
 type name = string
 
 type expr =
@@ -52,7 +53,7 @@ type ty =
       /// row extension: `<a : _ | ...>`
     | TRowExtend of name * ty * row
 
-    /// The kind of rows - empty row, row variable, or row extension
+/// The kind of rows - empty row, row variable, or row extension
 and row = ty
 
 and tvar =
@@ -91,7 +92,7 @@ module exp =
 
 module ty =
     let toString ty : string =
-        let mutable idNameMap = PersistentHashMap.empty
+        let mutable idNameMap = HashMap.empty
         let count = ref 0
         let nextName () =
             let i = !count
@@ -120,11 +121,11 @@ module ty =
                     if isSimple then sprintf "(%s)" arrowTyStr else arrowTyStr
             | TVar {contents = Generic id} -> 
                         
-                            match idNameMap |> PersistentHashMap.tryFind id with
+                            match idNameMap |> HashMap.tryFind id with
                             | Some ty -> ty
                             | None ->
                                 let name = nextName()
-                                idNameMap <- idNameMap |> PersistentHashMap.set id name 
+                                idNameMap <- idNameMap |> HashMap.add id name 
                                 name
                     
             | TVar {contents = Unbound(id, _)} -> "_" + string id
@@ -147,8 +148,8 @@ module ty =
         if !count > 0 then
             let varNames =
                 idNameMap
-                |> PersistentHashMap.toSeq
-                |> Seq.map (fun kv  -> kv.Value )
+                |> HashMap.toSeq
+                |> Seq.map (fun (k, v)  -> v )
                 |> Seq.sort
             sprintf "forall[%s] %s" (String.concat " " varNames) tyStr
         else
@@ -157,7 +158,7 @@ module ty =
 let currentId = ref 0
 
 let nextId() =
-    let id = !currentId in
+    let id = !currentId
     currentId := id + 1
     id
 
@@ -166,21 +167,19 @@ let resetId() = currentId := 0
 let newVar level = TVar (ref (Unbound(nextId (), level)))
 let newGenVar() = TVar (ref (Generic(nextId ())))
 
-//refactor to use mutable persistanthashmap or state monad?
 module Env =
-    type env = Map<String, ty>
-    let empty = Map.empty : env
+    type env = HashMap<String, ty>
+    let empty = HashMap.empty : env
     let extend env name ty =
-        env |> Map.add name ty
+        env |> HashMap.add name ty
     let lookup env name =
-        env |> Map.find name
+        env |> HashMap.tryFind name
 
 let occursCheckAdjustLevels tvarId tvarLevel ty =
-    let rec occursRec ty =
+    let rec f ty =
         match ty with
-        | TVar {contents = Link ty} -> occursRec ty
-        | TVar {contents = Generic _} as tvar->
-            ()//failwithf "%A should not be matched here for ty: %A" tvar ty
+        | TVar {contents = Link ty} -> f ty
+        | TVar {contents = Generic _} as tvar -> failwithf "%A should not be matched here for ty: %A" tvar ty
         | TVar ({contents = Unbound(otherId, otherLevel)} as otherTvar) ->
             if otherId = tvarId then
                 failwithf "recursive types are not allowed: %A" ty
@@ -189,53 +188,53 @@ let occursCheckAdjustLevels tvarId tvarLevel ty =
                     otherTvar := Unbound(otherId, tvarLevel)
                 else ()
         | TApp(ty, tyArgList) ->
-                occursRec ty
-                List.iter occursRec tyArgList
+                f ty
+                List.iter f tyArgList
         | TArrow(paramTyList, returnTy) ->
-                List.iter occursRec paramTyList
-                occursRec returnTy
+                List.iter f paramTyList
+                f returnTy
         | TConst _ -> ()
         //Records
-        | TRecord row -> occursRec row
+        | TRecord row -> f row
         | TRowExtend(_label, fieldTy, row) ->
-            occursRec fieldTy
-            occursRec row
+            f fieldTy
+            f row
         | TRowEmpty -> ()
-    occursRec ty
+    f ty
 
 let rec unify (ty1) (ty2) =
-    if ty1 = ty2 then () else
-    match (ty1, ty2) with
-        | TConst(name1), TConst(name2) when name1 = name2 -> ()
-        | TApp(ty1, tyArgList1), TApp(ty2, tyArgList2) ->
-                unify ty1 ty2
-                List.iter2 unify tyArgList1 tyArgList2
-        | TArrow(paramTyList1, returnTy1), TArrow(paramTyList2, returnTy2) ->
-                List.iter2 unify paramTyList1 paramTyList2
-                unify returnTy1 returnTy2
-        | TVar {contents = Link ty1}, ty2
-        | ty1, TVar {contents = Link ty2} -> unify ty1 ty2
-        | TVar {contents = Unbound(id1, _)}, TVar {contents = Unbound(id2, _)} when id1 = id2 ->
-                failwithf "Error: There should only a single instance of a particular type variable"
-        | TVar ({contents = Unbound(id, level)} as tvar), ty
-        | ty, TVar ({contents = Unbound(id, level)} as tvar) ->
-                occursCheckAdjustLevels id level ty
-                tvar := Link ty
-        //records
-        | TRecord row1, TRecord row2 -> unify row1 row2
-        | TRowEmpty, TRowEmpty -> ()
-        | TRowExtend(label1, fieldTy1, restRow1), (TRowExtend _ as row2) ->
-            let restRow1TvarRefOption =
-                match restRow1 with
-                | TVar ({contents = Unbound _} as tvar_ref) -> Some tvar_ref
-                | _ -> None
-            let restRow2 = rewriteRow row2 label1 fieldTy1
-            match restRow1TvarRefOption with
-            | Some {contents = Link _} -> failwithf "Error: recursive row type of %A" restRow1
-            | _ -> ()
-            unify restRow1 restRow2
-        | _, _ ->
-            failwithf "cannot unify types %s and %s"  (ty.toString ty1) (ty.toString ty2)
+    if ty1 == ty2 then ()
+    else
+        match (ty1, ty2) with
+            | TConst(name1), TConst(name2) when name1 = name2 -> ()
+            | TApp(ty1, tyArgList1), TApp(ty2, tyArgList2) ->
+                    unify ty1 ty2
+                    List.iter2 unify tyArgList1 tyArgList2
+            | TArrow(paramTyList1, returnTy1), TArrow(paramTyList2, returnTy2) ->
+                    List.iter2 unify paramTyList1 paramTyList2
+                    unify returnTy1 returnTy2
+            | TVar {contents = Link ty1}, ty2
+            | ty1, TVar {contents = Link ty2} -> unify ty1 ty2
+            | TVar {contents = Unbound(id1, _)}, TVar {contents = Unbound(id2, _)} when id1 = id2 ->
+                    failwithf "Error: There should only a single instance of a particular type variable"
+            | TVar ({contents = Unbound(id, level)} as tvar), ty
+            | ty, TVar ({contents = Unbound(id, level)} as tvar) ->
+                    occursCheckAdjustLevels id level ty
+                    tvar := Link ty
+            | TRecord row1, TRecord row2 -> unify row1 row2
+            | TRowEmpty, TRowEmpty -> ()
+            | TRowExtend(label1, fieldTy1, restRow1), (TRowExtend _ as row2) ->
+                let restRow1TvarRefOption =
+                    match restRow1 with
+                    | TVar ({contents = Unbound _} as tvar_ref) -> Some tvar_ref
+                    | _ -> None
+                let restRow2 = rewriteRow row2 label1 fieldTy1
+                match restRow1TvarRefOption with
+                | Some {contents = Link _} -> failwithf "Error: recursive row type of %A" restRow1
+                | _ -> ()
+                unify restRow1 restRow2
+            | _, _ ->
+                failwithf "cannot unify types %s and %s"  (ty.toString ty1) (ty.toString ty2)
 
 and rewriteRow row2 label1 fieldTy1 =
     match row2 with
@@ -258,7 +257,7 @@ let rec generalize level ty =
     | TVar {contents = Unbound(id, otherLevel)} when otherLevel > level ->
         TVar (ref (Generic id))
     | TApp(ty, tyArgList) ->
-        TApp(generalize level ty, tyArgList |> List.map (generalize level) )
+        TApp(generalize level ty, List.map (generalize level) tyArgList )
     | TArrow(paramTyList, returnTy) ->
         TArrow(paramTyList |> List.map (generalize level), generalize level returnTy)
     | TVar {contents = Link ty } ->
@@ -273,29 +272,28 @@ let rec generalize level ty =
     | TRowEmpty as ty -> ty
 
 let instantiate level ty =
-    //could easily just be a dictionary/ Hashtable, or even state monad
-    let mutable idVarMap = PersistentHashMap.empty
-    let rec instantiateRec ty =
+    let mutable idVarMap = HashMap.empty
+    let rec f ty =
         match ty with
         | TConst _ -> ty
-        | TVar {contents = Link ty} -> instantiateRec ty
+        | TVar {contents = Link ty} -> f ty
         | TVar {contents = Generic id} ->
-                match idVarMap |> PersistentHashMap.tryFind id with
+                match HashMap.tryFind id idVarMap with
                 | Some ty -> ty
                 | None ->
                     let var = newVar level
-                    idVarMap <- idVarMap |> PersistentHashMap.set id var
+                    idVarMap <- HashMap.add id var idVarMap
                     var
         | TVar {contents = Unbound _} -> ty
         | TApp(ty, tyArgList) ->
-                TApp(instantiateRec ty, List.map instantiateRec tyArgList)
+                TApp(f ty, List.map f tyArgList)
         | TArrow(paramTyList, returnTy) ->
-                TArrow(List.map instantiateRec paramTyList, instantiateRec returnTy)
-        | TRecord row -> TRecord (instantiateRec row)
+                TArrow(List.map f paramTyList, f returnTy)
+        | TRecord row -> TRecord (f row)
         | TRowEmpty -> ty
         | TRowExtend(label, fieldTy, row) ->
-            TRowExtend(label, fieldTy, instantiateRec row)
-    instantiateRec ty
+            TRowExtend(label, f fieldTy, f row)
+    f ty
 
 let rec matchFunTy numParams ty =
     match ty with
@@ -318,31 +316,20 @@ let rec matchFunTy numParams ty =
 
 let rec infer env level exp =
         match exp with
-        // x : σ ∈ Γ
-        // --−−−−−−−
-        // Γ ⊢ x : σ
         | Var name ->
-                try instantiate level (Env.lookup env name)
-                with ex -> failwithf "variable %s not found" name
-        ///  Γ , x : τ ⊢ e : τ′
-        /// −−−−−−−−−−−−−−------
-        /// Γ ⊢ λ x . e : τ → τ′
+                match Env.lookup env name with
+                | Some v -> instantiate level v
+                | None -> failwithf "variable %s not found" name
         | Fun(paramList, bodyExpr) ->
                 let paramTyList = paramList |> List.map (fun _ -> newVar level) 
                 let fnEnv =
                     List.fold2 (fun env paramName paramTy -> Env.extend env paramName paramTy) env paramList paramTyList
                 let returnTy = infer fnEnv level bodyExpr
                 TArrow(paramTyList, returnTy)
-        // Γ ⊢ e0 : τ → τ′   Γ ⊢ e1 : τ
-        // −--------−−−−−−−−−−−−−−−−−−−−
-        //         Γ ⊢ e0(e1) : τ′
         | Let(varName, valueExpr, bodyExpr) ->
                 let varTy = infer env (level + 1) valueExpr
                 let generalizedTy = generalize level varTy
                 infer (Env.extend env varName generalizedTy) level bodyExpr
-        // Γ ⊢ e0 : τ → τ′   Γ ⊢ e1 : τ
-        // −--------−−−−−−−−−−−−−−−−−−−−
-        //        Γ ⊢ e0(e1) : τ′
         | Call(fnExpr, argList) ->
                 let paramTyList, returnTy =
                     matchFunTy (List.length argList) (infer env level fnExpr)
@@ -350,9 +337,7 @@ let rec infer env level exp =
                     (fun paramTy argExpr -> unify paramTy (infer env level argExpr))
                     paramTyList argList
                 returnTy
-        //TODO add empty record rule
         | RecordEmpty -> TRecord TRowEmpty
-        //TODO add record select rule 
         | RecordSelect(recordExpr, label) ->
                 /// inlined code for Call of function with type `forall[a r] {label : a | r} -> a`
                 let restRowTy = newVar level
@@ -361,7 +346,6 @@ let rec infer env level exp =
                 let returnTy = fieldTy
                 unify paramTy (infer env level recordExpr)
                 returnTy
-        //TODO: add rule for record restriction
         | RecordRestrict(recordExpr, label) ->
                 /// inlined code for Call of function with type `forall[a r] {label : a | r} -> {r}`
                 let restRowTy = newVar level
@@ -370,7 +354,6 @@ let rec infer env level exp =
                 let returnTy = TRecord restRowTy
                 unify paramTy (infer env level recordExpr)
                 returnTy
-        //TODO: Add rule for record extend
         | RecordExtend(label, expr, recordExpr) ->
                 /// inlined code for Call of function with type `forall[a r] (a, {r}) -> {label : a | r}`
                 let restRowTy = newVar level
@@ -381,9 +364,6 @@ let rec infer env level exp =
                 unify param1Ty (infer env level expr)
                 unify param2Ty (infer env level recordExpr)
                 returnTy
-
-
-
 
 let basicEnv =
     let env = ref Env.empty
@@ -476,6 +456,12 @@ let example14 =
     Let("r", (RecordExtend("a", Var("id"), RecordExtend("b", Fun(["x"], Var("x")), RecordEmpty))), 
         Call(Var("choose"), [RecordSelect(Var("r"), "a"); RecordSelect(Var("r"), "b")])
     )
+
+let example15 =
+    //"r4: let f = fun r -> (_.x) r in f
+    // \nexpecting :: {x = a4 | r5} -> a4",
+    //Let("f", Fun(["r"], RecordSelect(Var "r", "x")), Var "f" )
+    Let("f", Fun(["r"], RecordSelect(Var "r", "x")), Var "f")
 
 
 let recordRecurse = 
