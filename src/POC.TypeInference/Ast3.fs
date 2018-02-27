@@ -300,7 +300,7 @@ let b6 =
     EAbs("m", (ELet("y", EVar "m", ELet("x", (EApp(EVar "y", EPrim(Bool true))), EVar "x"))))
 
 let b7 =
-      "b6: fun f -> (fun g -> (fun arg (f g arg)))",
+      "b7: fun f -> (fun g -> (fun arg (f g arg)))",
       EAbs("f", EAbs("g", EAbs("arg", EApp(EVar("g"), EApp(EVar("f"), EVar("arg"))))))
 
 
