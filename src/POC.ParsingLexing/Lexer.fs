@@ -74,6 +74,7 @@ module LexerTypes =
             Location    : Location
         }
 
+
 module LexerMappings =
     open LexerTypes
     
@@ -254,7 +255,7 @@ module LexerActivePatterns =
                 Some (Literal.String dataString ,leftOver,length)
 
         let (|Bool|_|) input =
-            match matchToken operators input with
+            match matchToken bool input with
             | None -> None
             | Some (dataBool,leftOver,length) ->
                 Some ( Boolean.Parse(dataBool) |> Literal.Bool ,leftOver,length)
@@ -345,8 +346,8 @@ module LexerTokenization =
 
             | Separator             (token,leftOver,length)       
             | Operator              (token,leftOver,length)
-            | IdentifierOrKeyword   (token,leftOver,length)
-            | Literal               (token,leftOver,length) ->
+            | Literal               (token,leftOver,length)
+            | IdentifierOrKeyword   (token,leftOver,length) ->
                 let token =
                     {
                         TokenType   = token

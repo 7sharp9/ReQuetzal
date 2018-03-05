@@ -1,5 +1,10 @@
 namespace Compiler
 
+module AssemblyInfo =
+    open System.Runtime.CompilerServices
+
+    [<assembly: RuntimeCompatibility(WrapNonExceptionThrows = true)>]
+    do ()
 
 module Error =
     open Microsoft.FSharp.Quotations
@@ -67,29 +72,29 @@ module Error =
 
 
 
-module test =
-    open Error
-    open Helper
+// module test =
+//     open Error
+//     open Helper
 
-    type Test =
-        | Testing of int * float
-        | Toz
-        interface IFailure with
-            member this.Description =
-                match this with
-                | Toz -> "Toz"
-                | Testing (tokenType , token) -> 
-                    (sprintf "Testing => { %A } <=> { %A }" tokenType token)
+//     type Test =
+//         | Testing of int * float
+//         | Toz
+//         interface IFailure with
+//             member this.Description =
+//                 match this with
+//                 | Toz -> "Toz"
+//                 | Testing (tokenType , token) -> 
+//                     (sprintf "Testing => { %A } <=> { %A }" tokenType token)
                         
-            member __.Priority = ErrorPriority.FatalError
+//             member __.Priority = ErrorPriority.FatalError
 
-    let failure = Testing (5,2.0)
-    let e =
-        match failure with
-        | IsFailureArgs <@ Testing @> args -> printfn "%A" (failure,args)
-        | IsFailureNoArgs <@ Toz @> -> printfn "%A" failure
-        | _ -> failwith "failed"
+//     let failure = Testing (5,2.0)
+//     let e =
+//         match failure with
+//         | IsFailureArgs <@ Testing @> args -> printfn "%A" (failure,args)
+//         | IsFailureNoArgs <@ Toz @> -> printfn "%A" failure
+//         | _ -> failwith "failed"
 
-    let e = extractUnionCaseInfo <@ Testing (5,2.0) @>
+//     // let e = extractUnionCaseInfo <@ Testing (5,2.0) @>
 
-    let v = extractUnionCaseInfo <@ Toz @>
+//     // let v = extractUnionCaseInfo <@ Toz @>

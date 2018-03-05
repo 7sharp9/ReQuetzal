@@ -4,10 +4,6 @@
     <TargetFramework>netcoreapp2.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Error.fs" />
-    <Compile Include="Monads.fs" />
-    <Compile Include="Lexer.fs" />
-    <Compile Include="Parser.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />

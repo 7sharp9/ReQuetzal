@@ -28,7 +28,6 @@ module Monoid =
 
 [<AutoOpen>]
 module RWSResult =
-    open Error
 
     /// might want to change that as in the case of the compiler we do not want to 
     /// fail directly, but propagate a list of errors with priority
@@ -36,22 +35,25 @@ module RWSResult =
     /// with the user of "compensators" which compensates the user code when possible
     [<NoComparison>]
     [<NoEquality>]
-    type Result<'Read, 'Write, 'State , 'T> = 
+    type Result<'Read, 'Write, 'State , 'T, 'F> = 
         | Success of 'Read * 'Write * 'State * 'T
-        | Failure of IFailure 
+        | Failure of 'F 
 
     [<NoComparison>]
     [<NoEquality>]
-    type RWSRInternal< 'Read, 'Write, 'State, 'T> = RWSRInternal of ('State * 'Read -> Result<'Read , 'Write, 'State, 'T>)    
-    type RWSRDelayed< 'Read, 'Write, 'State, 'T> = unit -> RWSRInternal< 'Read, 'Write, 'State, 'T>
+    type RWSRInternal< 'Read, 'Write, 'State, 'T, 'F> = 
+        RWSRInternal of ('State * 'Read -> Result<'Read , 'Write, 'State, 'T, 'F>)    
+
+    type RWSRDelayed< 'Read, 'Write, 'State, 'T, 'F> = 
+        unit -> RWSRInternal< 'Read, 'Write, 'State, 'T, 'F>
 
     [<NoComparison>]
     [<NoEquality>]
-    type RWSResult< 'Read, 'Write, 'State, 'T> = RWSResult of (unit -> RWSRInternal< 'Read, 'Write, 'State, 'T>)    
+    type RWSResult< 'Read, 'Write, 'State, 'T, 'F> = RWSResult of RWSRDelayed< 'Read, 'Write, 'State, 'T, 'F>
 
 
     type RWSResultBuilder<'W> (monoid: IMonoid<'W>) = 
-        member __.Bind(RWSResult delayed, f:'T -> RWSRInternal<'R,'W,'S,'U>) : RWSRInternal<'R,'W,'S,'U> =  
+        member __.Bind(RWSResult delayed, f:'T -> RWSRInternal<'R,'W,'S,'U,'F>) : RWSRInternal<'R,'W,'S,'U,'F> =  
             RWSRInternal 
                 (fun (state,read) -> 
                     let (RWSRInternal rwsResult1) = delayed ()
@@ -66,44 +68,60 @@ module RWSResult =
                     | Failure failure -> Failure failure
                 )
 
-        member __.Return(value:'T) : RWSRInternal<'R,'W,'S,'T> = 
+        member __.Return(value:'T) : RWSRInternal<'R,'W,'S,'T,'F> = 
             RWSRInternal (fun (state,read) -> Success (read, monoid.Zero() , state ,value))
 
-        member __.ReturnFrom(RWSResult update : RWSResult<'R,'W,'S,'T>) : RWSRInternal<'R,'W,'S,'T> = 
+        member __.ReturnFrom(RWSResult update : RWSResult<'R,'W,'S,'T,'F>) : RWSRInternal<'R,'W,'S,'T,'F> = 
             update ()
 
         // member this.Yield(value:'T) : RWSResult<'R,'W,'S,'T> = this.Return value
         // member this.YieldFrom(delayed) = this.ReturnFrom delayed
         
-        member this.Zero() : RWSRInternal<'R,'W,'S, unit > = this.Return ()
+        member this.Zero() : RWSRInternal<'R,'W,'S, unit,'F> = this.Return ()
 
-        member __.Delay(f: RWSRDelayed<'R,'W,'S,'T>) = f
+        member __.Delay(f: RWSRDelayed<'R,'W,'S,'T,'F>) = f
 
-        member __.Run(f:RWSRDelayed<'R,'W,'S,'T>) = RWSResult f
+        member __.Run(f:RWSRDelayed<'R,'W,'S,'T,'F>) = RWSResult f
 
-        member this.Combine(rwsResult : RWSRInternal<'R,'W,'S,unit>, delayed :RWSRDelayed<'R,'W,'S,'T>) : RWSRInternal<'R,'W,'S,'T> = 
+        member this.Combine(rwsResult : RWSRInternal<'R,'W,'S,unit,'F>, delayed :RWSRDelayed<'R,'W,'S,'T,'F>) : RWSRInternal<'R,'W,'S,'T,'F> = 
             this.Bind(
                 this.Run(
                     this.Delay(
                         fun () -> rwsResult)),
                 delayed)
 
-        member this.TryFinally(body:RWSRDelayed<'R,'W,'S,'T>, compensation) =
+        member this.TryFinally(body:RWSRDelayed<'R,'W,'S,'T,'F>, compensation) =
             try this.ReturnFrom(RWSResult body)
             finally compensation() 
 
-        member this.TryWith(body : RWSRDelayed<'R,'W,'S,'T>, handler: exn -> RWSRInternal<'R,'W,'S,'T>) : RWSRInternal<'R,'W,'S,'T> =
-            try this.ReturnFrom(RWSResult body)
-            with e -> handler e
+        member this.TryWith(body : RWSRDelayed<'R,'W,'S,'T,'F>, handler: 'F -> RWSRInternal<'R,'W,'S,'T,'F>) : RWSRInternal<'R,'W,'S,'T,'F> =
 
-        member this.Using(disposable:#System.IDisposable, body : 'a -> RWSRInternal<'R,'W,'S,'T>) =
+            let (RWSRInternal t) = this.ReturnFrom(RWSResult body)
+            // let e =
+            fun (read,state) ->
+                let f = t (read,state)
+                match f with
+                | Success _ -> f
+                | Failure failure -> 
+                    try
+                        let (RWSRInternal t1) = handler failure
+                        t1 (read,state)
+                    with
+                    | :? System.Runtime.CompilerServices.RuntimeWrappedException ->
+                        printfn "\n\n\n\n RuntimeWrappedException caught"    
+                        f 
+            |> RWSRInternal
+
+
+           
+        member this.Using(disposable:#System.IDisposable, body : 'a -> RWSRInternal<'R,'W,'S,'T,'F>) =
             let body' = fun () -> body disposable
             this.TryFinally(body', fun () -> 
                 match disposable with 
                     | null -> () 
                     | disp -> disp.Dispose())
 
-        member this.While(guard: unit -> bool, body: RWSRDelayed<'R,'W,'S,unit>) : RWSRInternal<'R,'W,'S,unit> =
+        member this.While(guard: unit -> bool, body: RWSRDelayed<'R,'W,'S,unit,'F>) : RWSRInternal<'R,'W,'S,unit,'F> =
             let rec whileLoop guard body =
                 if guard() then 
                     this.Bind (RWSResult( body ), fun _ -> whileLoop guard body)
@@ -112,7 +130,7 @@ module RWSResult =
 
             whileLoop guard body
     
-        member this.For(sequence:seq<'a>, body: 'a -> RWSRInternal<'R,'W,'S,unit>) : RWSRInternal<'R,'W,'S,unit> =
+        member this.For(sequence:seq<'a>, body: 'a -> RWSRInternal<'R,'W,'S,unit,'F>) : RWSRInternal<'R,'W,'S,unit,'F> =
             this.Using(sequence.GetEnumerator(),fun enum -> 
                 this.While(enum.MoveNext, 
                     this.Delay(fun () -> body enum.Current)))            
@@ -132,10 +150,10 @@ module RWSResult =
     let rwsWrite (value : 'W) =
         RWSResult(fun () -> RWSRInternal(fun (state,read) -> Success (read,value,state,())) )
         
-    let rwsRun (state,read) (RWSResult delayed: RWSResult<'R,'W,'S,'T>) =
+    let rwsRun (state,read) (RWSResult delayed: RWSResult<'R,'W,'S,'T,'F>) =
         let (RWSRInternal rwsResult) = delayed ()
         rwsResult (state,read)
 
        
-
+        
 
